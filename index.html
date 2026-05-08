@@ -1196,10 +1196,19 @@ function getAIDecision(pm, gas, temp) {
 }
 function calculateAdvancedScore(pm, gas, temp) {
     let s = 100;
-    s -= pm * 1.5; s -= gas / 8;
-    if (temp>26) s -= (temp-26)*1.5;
-    if (temp<18) s -= (18-temp)*1;
-    return Math.min(100, Math.max(0, Math.floor(s)));
+
+    if (pm <= 12)       s -= 0;
+    else if (pm <= 25)  s -= (pm - 12) * 2;
+    else if (pm <= 50)  s -= 26 + (pm - 25) * 1.2;
+    else                s -= 56;
+
+    const gasPenalty = Math.min(35, (gas / 1000) * 35);
+    s -= gasPenalty;
+
+    if (temp > 28)      s -= Math.min(15, (temp - 28) * 2);
+    else if (temp < 18) s -= Math.min(10, (18 - temp) * 1);
+
+    return Math.min(100, Math.max(1, Math.floor(s)));
 }
 function updateFanState(c) {
     if (c.fanManual) return c.fanState;
