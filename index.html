@@ -1315,37 +1315,10 @@ function loadLiveTable() {
     updateStats();
 }
 
-async function toggleFanManual(name) {
+function toggleFanManual(name) {
     if (currentUserRole==='teacher'||currentUserRole==='viewer') { alert("⛔ Fan kontrolü için admin yetkisi gerekli!"); return; }
     const c = classData.find(x=>x.name===name);
-    if (!c) return;
-
-    c.fanManual = !c.fanManual;
-
-    // MANUAL moda giriş → mevcut fanState'i tersine çevir (açıksa kapat, kapalıysa aç)
-    // MANUAL'dan çıkış → AUTO'ya dön, sunucuya bildir
-    const newState = c.fanManual ? !c.fanState : c.fanState;
-    if (c.fanManual) c.fanState = newState;
-
-    const command = newState ? "ON" : "OFF";
-    const mode    = c.fanManual ? "MANUAL" : "AUTO";
-
-    try {
-        const resp = await fetch("/api/fan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command, mode })
-        });
-        const data = await resp.json();
-        console.log("Fan komutu gönderildi:", command, "| Mod:", mode, "| Sunucu:", data);
-    } catch(err) {
-        console.error("Fan komutu gönderilemedi:", err);
-    }
-
-    if (!c.fanManual) updateFanState(c);  // AUTO'ya dönünce sensör değerine göre güncelle
-
-    loadLiveTable();
-    renderSchoolMap();
+    if (c) { c.fanManual=!c.fanManual; if(c.fanManual) c.fanState=!c.fanState; else updateFanState(c); loadLiveTable(); renderSchoolMap(); }
 }
 
 function updatePodium() {
