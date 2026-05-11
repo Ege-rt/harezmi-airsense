@@ -1322,35 +1322,27 @@ async function toggleFanManual(name) {
 
     c.fanManual = !c.fanManual;
 
-    if (c.fanManual) {
-        // MANUAL mod → fan durumunu tersine çevir
-        c.fanState = !c.fanState;
-        const command = c.fanState ? "ON" : "OFF";
+    // MANUAL moda giriş → mevcut fanState'i tersine çevir (açıksa kapat, kapalıysa aç)
+    // MANUAL'dan çıkış → AUTO'ya dön, sunucuya bildir
+    const newState = c.fanManual ? !c.fanState : c.fanState;
+    if (c.fanManual) c.fanState = newState;
 
-        try {
-            await fetch("/api/fan", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ command: command, mode: "MANUAL" })
-            });
-            console.log("Fan komutu gönderildi:", command);
-        } catch(err) {
-            console.error("Fan komutu gönderilemedi:", err);
-        }
-    } else {
-        // AUTO moda geç
-        updateFanState(c);
-        try {
-            await fetch("/api/fan", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ command: c.fanState ? "ON" : "OFF", mode: "AUTO" })
-            });
-            console.log("Fan AUTO moda alındı");
-        } catch(err) {
-            console.error("Fan modu gönderilemedi:", err);
-        }
+    const command = newState ? "ON" : "OFF";
+    const mode    = c.fanManual ? "MANUAL" : "AUTO";
+
+    try {
+        const resp = await fetch("/api/fan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command, mode })
+        });
+        const data = await resp.json();
+        console.log("Fan komutu gönderildi:", command, "| Mod:", mode, "| Sunucu:", data);
+    } catch(err) {
+        console.error("Fan komutu gönderilemedi:", err);
     }
+
+    if (!c.fanManual) updateFanState(c);  // AUTO'ya dönünce sensör değerine göre güncelle
 
     loadLiveTable();
     renderSchoolMap();
