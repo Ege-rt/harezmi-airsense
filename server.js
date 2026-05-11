@@ -41,12 +41,6 @@ const MAX_RETRY = 10;
 let retryCount = 0;
 
 // ─────────────────────────────────────────────
-// FAN KONTROL STATE  ← YENİ
-// ─────────────────────────────────────────────
-let fanCommand = "OFF";   // ON / OFF
-let fanMode    = "AUTO";  // AUTO / MANUAL
-
-// ─────────────────────────────────────────────
 // INDEXES
 // ─────────────────────────────────────────────
 async function createIndexes() {
@@ -125,7 +119,11 @@ async function connectMongo() {
 
         if (retryCount <= MAX_RETRY) {
             console.log(`🔁 Retry ${retryCount}/${MAX_RETRY} in 5s...`);
-            setTimeout(() => { connectMongo(); }, 5000);
+
+            setTimeout(() => {
+                connectMongo();
+            }, 5000);
+
         } else {
             console.log("⛔ Max retry limit reached. Exiting...");
         }
@@ -193,14 +191,13 @@ app.post("/api/sensors", async (req, res) => {
     const entry = {
         deviceId,
         temperature: Number(data.temperature) || null,
-        humidity:    Number(data.humidity)    || null,
-        pm25:        Number(data.pm25)        || null,
-        pm10:        Number(data.pm10)        || null,
-        gas:         Number(data.gas)         || null,
-        fanState:    !!data.fanState,
-        class:       data.class || null,
-        lastSeen:    now,
-        online:      true
+        humidity: Number(data.humidity) || null,
+        pm25: Number(data.pm25) || null,
+        gas: Number(data.gas) || null,
+        fanState: !!data.fanState,
+        class: data.class || null,
+        lastSeen: now,
+        online: true
     };
 
     sensorStore[deviceId] = entry;
@@ -217,42 +214,14 @@ app.post("/api/sensors", async (req, res) => {
             timestamp: now
         });
 
-        console.log("📡 Data saved:", deviceId, "| fanMode:", fanMode, "| fanCommand:", fanCommand);
+        console.log("📡 Data saved:", deviceId);
 
-        // ← ESP32'ye fanCommand ve fanMode gönder
-        res.json({
-            success:    true,
-            fanCommand: fanCommand,
-            fanMode:    fanMode
-        });
+        res.json({ success: true });
 
     } catch (err) {
         console.error("DB write error:", err.message);
         res.status(500).json({ error: "DB error" });
     }
-});
-
-// ─────────────────────────────────────────────
-// API: FAN KONTROL  ← YENİ
-// Dashboard'dan fan aç/kapat
-// ─────────────────────────────────────────────
-app.post("/api/fan", (req, res) => {
-    const { command, mode } = req.body;
-
-    if (mode)    fanMode    = mode;       // AUTO / MANUAL
-    if (command) fanCommand = command;    // ON / OFF
-
-    console.log("🌀 Fan komutu:", fanCommand, "| Mod:", fanMode);
-
-    res.json({ success: true, fanCommand, fanMode });
-});
-
-// ─────────────────────────────────────────────
-// API: FAN DURUM  ← YENİ
-// Dashboard fan durumunu okur
-// ─────────────────────────────────────────────
-app.get("/api/fan", (req, res) => {
-    res.json({ fanCommand, fanMode });
 });
 
 // ─────────────────────────────────────────────
@@ -278,13 +247,11 @@ app.get("/api/status", async (req, res) => {
         .catch(() => 0);
 
     res.json({
-        status:     "ok",
-        mongo:      !!db,
-        devices:    Object.keys(sensorStore).length,
-        history:    historyCount,
-        uptime:     process.uptime(),
-        fanCommand: fanCommand,
-        fanMode:    fanMode
+        status: "ok",
+        mongo: !!db,
+        devices: Object.keys(sensorStore).length,
+        history: historyCount,
+        uptime: process.uptime()
     });
 });
 
