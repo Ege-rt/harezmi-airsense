@@ -233,8 +233,15 @@ app.post("/api/sensors", async (req, res) => {
 app.post("/api/fan-command", (req, res) => {
     const { deviceId, command } = req.body;
     if (!deviceId) return res.status(400).json({ error: "deviceId required" });
-    fanCommands[deviceId] = command;
-    console.log(`🌀 Fan komutu: ${deviceId} → ${command ? "AÇIK" : "KAPALI"}`);
+
+    if (command === null || command === undefined) {
+        delete fanCommands[deviceId];  // ← Override'ı tamamen sil
+        console.log(`🌀 Fan override iptal: ${deviceId}`);
+    } else {
+        fanCommands[deviceId] = command;
+        console.log(`🌀 Fan komutu: ${deviceId} → ${command ? "AÇIK" : "KAPALI"}`);
+    }
+
     res.json({ success: true });
 });
 
