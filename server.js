@@ -157,6 +157,9 @@ app.use(express.static(path.join(__dirname)));
 let sensorStore = {};
 const OFFLINE_THRESHOLD_MS = 30 * 1000;
 
+// Fan komutları
+let fanCommands = {};
+
 // ─────────────────────────────────────────────
 // VALIDATION
 // ─────────────────────────────────────────────
@@ -222,6 +225,23 @@ app.post("/api/sensors", async (req, res) => {
         console.error("DB write error:", err.message);
         res.status(500).json({ error: "DB error" });
     }
+});
+
+// ─────────────────────────────────────────────
+// API: FAN COMMAND (WEB → ESP)
+// ─────────────────────────────────────────────
+app.post("/api/fan-command", (req, res) => {
+    const { deviceId, command } = req.body;
+    if (!deviceId) return res.status(400).json({ error: "deviceId required" });
+    fanCommands[deviceId] = command;
+    console.log(`🌀 Fan komutu: ${deviceId} → ${command ? "AÇIK" : "KAPALI"}`);
+    res.json({ success: true });
+});
+
+app.get("/api/fan-command", (req, res) => {
+    const { deviceId } = req.query;
+    if (!deviceId) return res.status(400).json({ error: "deviceId required" });
+    res.json({ fanOverride: fanCommands[deviceId] ?? null });
 });
 
 // ─────────────────────────────────────────────
