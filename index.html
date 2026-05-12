@@ -1318,7 +1318,27 @@ function loadLiveTable() {
 function toggleFanManual(name) {
     if (currentUserRole==='teacher'||currentUserRole==='viewer') { alert("⛔ Fan kontrolü için admin yetkisi gerekli!"); return; }
     const c = classData.find(x=>x.name===name);
-    if (c) { c.fanManual=!c.fanManual; if(c.fanManual) c.fanState=!c.fanState; else updateFanState(c); loadLiveTable(); renderSchoolMap(); }
+    if (!c) return;
+    c.fanManual = !c.fanManual;
+
+    if (c.fanManual) {
+        c.fanState = !c.fanState;
+        fetch('https://harezmi-airsense.onrender.com/api/fan-command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId: c.deviceId, command: c.fanState })
+        }).catch(e => console.log('Fan komut hatası:', e));
+    } else {
+        fetch('https://harezmi-airsense.onrender.com/api/fan-command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId: c.deviceId, command: null })
+        }).catch(e => console.log('Fan override iptal hatası:', e));
+        updateFanState(c);
+    }
+
+    loadLiveTable();
+    renderSchoolMap();
 }
 
 function updatePodium() {
