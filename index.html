@@ -2086,8 +2086,9 @@ function initApp() {
                 });
             });
 
-            // Anlık veri de varsa ekle
-            classData.filter(c => c.hasData && c.pm != null).forEach(c => {
+            // Anlık veri: sadece bugün için getDayAverages'ta yoksa ekle (çift sayım önlemi)
+            const todayAvgNames = new Set(getDayAverages(getTodayKey()).map(c => c.name));
+            classData.filter(c => c.hasData && c.pm != null && !todayAvgNames.has(c.name)).forEach(c => {
                 if (!classWeekly[c.name]) classWeekly[c.name] = { pmSum: c.pm, gasSum: c.gas||0, scoreSum: c.score||0, count: 1 };
             });
 
