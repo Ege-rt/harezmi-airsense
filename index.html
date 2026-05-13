@@ -1094,25 +1094,13 @@ function loadLocalToday() {
 // Geçmiş + bugünkü anlık birleşik kayıtlar
 function loadDailyRecords() {
     const base = _dailyCache ? { ..._dailyCache } : {};
-    // Bugünün anlık verisini (localStorage) MongoDB verisinin üstüne birleştir
     const today = getTodayKey();
-    const localToday = loadLocalToday();
-    if (Object.keys(localToday).length) {
-        if (!base[today]) base[today] = {};
-        Object.entries(localToday).forEach(([cls, r]) => {
-            if (!base[today][cls]) {
-                base[today][cls] = { ...r };
-            } else {
-                // Aynı ölçümleri çift saymamak için: MongoDB yoksa ekle, varsa MongoDB'yi kullan
-                // (MongoDB zaten en güncel birleşimi tutuyor, localToday ek verisi)
-                const b = base[today][cls];
-                b.pmSum    += r.pmSum;
-                b.gasSum   += r.gasSum;
-                b.tSum     += r.tSum;
-                b.scoreSum += r.scoreSum;
-                b.count    += r.count;
-            }
-        });
+    // MongoDB bugünkü veriyi içeriyorsa localStorage kullanma (çift sayım önlemi)
+    if (!base[today]) {
+        const localToday = loadLocalToday();
+        if (Object.keys(localToday).length) {
+            base[today] = localToday;
+        }
     }
     return base;
 }
