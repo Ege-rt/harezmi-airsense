@@ -787,6 +787,7 @@
         <div class="nav-item" onclick="showPage('champions', this)"><i class="fas fa-trophy"></i> Şampiyonlar Ligi</div>
         <div class="nav-item" onclick="showPage('analytics', this)"><i class="fas fa-chart-pie"></i> Analitik Raporlar</div>
         <div class="nav-item" onclick="showPage('map', this)"><i class="fas fa-map-marked-alt"></i> Okul Haritası</div>
+        <div class="nav-item" onclick="showPage('history', this)"><i class="fas fa-calendar-alt"></i> Geçmiş & Analiz</div>
         <div class="nav-item" id="navUsers" onclick="showPage('users', this)"><i class="fas fa-users"></i> Kullanıcılar</div>
         <div class="nav-item" id="navSettings" onclick="showPage('settings', this)"><i class="fas fa-cog"></i> Sistem Ayarları</div>
         <div class="dark-mode-toggle" onclick="toggleDarkMode()">
@@ -899,6 +900,94 @@
                 </table>
             </div>
         </div>
+
+        <!-- ===================== GEÇMİŞ & ANALİZ SAYFASI ===================== -->
+        <div id="history" class="page">
+            <h1>📅 Geçmiş & Analiz</h1>
+
+            <!-- Üst Özet Kartları -->
+            <div class="stats-grid" style="margin-bottom:28px">
+                <div class="card" style="text-align:center">
+                    <div style="font-size:2rem;margin-bottom:8px">📆</div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;letter-spacing:.07em;text-transform:uppercase">Kayıtlı Gün</div>
+                    <div id="hist-totalDays" style="font-size:2.2rem;font-weight:800;color:var(--accent)">-</div>
+                </div>
+                <div class="card" style="text-align:center">
+                    <div style="font-size:2rem;margin-bottom:8px">🏆</div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;letter-spacing:.07em;text-transform:uppercase">Tüm Zamanlar Şampiyonu</div>
+                    <div id="hist-allTimeChamp" style="font-size:1.5rem;font-weight:800;color:#ffd700">-</div>
+                    <div id="hist-allTimeScore" style="font-size:0.85rem;color:var(--text-secondary)"></div>
+                </div>
+                <div class="card" style="text-align:center">
+                    <div style="font-size:2rem;margin-bottom:8px">💨</div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;letter-spacing:.07em;text-transform:uppercase">Genel Ort. PM2.5</div>
+                    <div id="hist-overallAvgPM" style="font-size:2.2rem;font-weight:800;color:var(--success)">-</div>
+                    <div style="font-size:0.75rem;color:var(--text-secondary)">µg/m³</div>
+                </div>
+                <div class="card" style="text-align:center">
+                    <div style="font-size:2rem;margin-bottom:8px">📊</div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;letter-spacing:.07em;text-transform:uppercase">Bu Hafta Ort. Puan</div>
+                    <div id="hist-weekScore" style="font-size:2.2rem;font-weight:800;color:var(--warning)">-</div>
+                </div>
+            </div>
+
+            <!-- Ay / Hafta / Gün Seçici -->
+            <div class="card" style="margin-bottom:24px">
+                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+                    <h3 style="margin:0;flex:1">🗓️ Dönem Seç</h3>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="filter-btn active" id="hist-btnMonth" onclick="histSetView('month',this)">Bu Ay</button>
+                        <button class="filter-btn" id="hist-btnWeek"  onclick="histSetView('week', this)">Bu Hafta</button>
+                        <button class="filter-btn" id="hist-btnAll"   onclick="histSetView('all',  this)">Tüm Kayıtlar</button>
+                    </div>
+                </div>
+
+                <!-- Ay/Hafta Özet Tablosu -->
+                <div id="hist-periodSummary">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+                        <thead id="hist-periodHead"></thead>
+                        <tbody id="hist-periodBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Günlük PM Trendi Grafiği -->
+            <div class="card" style="margin-bottom:24px">
+                <h3 style="margin-bottom:16px">📈 Günlük Ortalama PM2.5 Trendi</h3>
+                <div class="chart-box"><canvas id="hist-pmTrendChart"></canvas></div>
+            </div>
+
+            <!-- Haftalık Puan Trendi Grafiği -->
+            <div class="card" style="margin-bottom:24px">
+                <h3 style="margin-bottom:16px">🏅 Haftalık En İyi 5 Sınıf Puan Trendi</h3>
+                <div class="chart-box"><canvas id="hist-weeklyScoreChart"></canvas></div>
+            </div>
+
+            <!-- Günlük Detay Tablosu -->
+            <div class="card">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+                    <h3 style="margin:0;flex:1">📋 Gün Bazlı Sınıf Ortalamaları</h3>
+                    <select id="hist-daySelect" onchange="renderHistDayDetail()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-family:'Sora',sans-serif"></select>
+                </div>
+                <table style="width:100%;border-collapse:collapse;font-size:0.85rem" id="hist-dayDetailTable">
+                    <thead>
+                        <tr style="background:var(--hover-bg)">
+                            <th style="padding:10px;text-align:left;color:var(--text-secondary)">#</th>
+                            <th style="padding:10px;text-align:left;color:var(--text-secondary)">Sınıf</th>
+                            <th style="padding:10px;text-align:left;color:var(--text-secondary)">Ort. PM2.5</th>
+                            <th style="padding:10px;text-align:left;color:var(--text-secondary)">Ort. Gaz</th>
+                            <th style="padding:10px;text-align:left;color:var(--text-secondary)">Ort. Sıcaklık</th>
+                            <th style="padding:10px;text-align:left;color:var(--text-secondary)">Ort. Puan</th>
+                            <th style="padding:10px;text-align:left;color:var(--text-secondary)">Ölçüm</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hist-dayDetailBody">
+                        <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-secondary)">Tarih seçin</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <!-- ===================== / GEÇMİŞ & ANALİZ SAYFASI ===================== -->
 
         <div id="settings" class="page">
             <h1>⚙️ Sistem Ayarları</h1>
@@ -1350,6 +1439,7 @@ function showPage(pageId, element) {
     if (pageId==='analytics') initAnalyticsCharts();
     if (pageId==='map') renderSchoolMap();
     if (pageId==='users') renderUsersTable();
+    if (pageId==='history') initHistoryPage();
 }
 
 function updateStats() {
@@ -1996,6 +2086,313 @@ function initApp() {
                 if (typeof checkPasswordStrength === 'function') checkPasswordStrength(e.target.value);
             });
         });
+
+// ========== GEÇMİŞ & ANALİZ SAYFASI FONKSİYONLARI ==========
+
+let histCurrentView = 'month';
+let histPmChart = null, histScoreChart = null;
+
+// Haftanın başını (Pazartesi) döndür
+function getWeekStart(dateStr) {
+    const d = new Date(dateStr);
+    const day = d.getDay(); // 0=Pazar
+    const diff = (day === 0 ? -6 : 1 - day);
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+}
+
+// Tarihi "YY-AA-GG" → "DD.MM.YYYY" formatına çevir
+function fmtDate(dk) {
+    return new Date(dk).toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+
+// Tüm kayıtları grupla: ay ve hafta bazında
+function groupRecords() {
+    const records = loadDailyRecords();
+    const dayKeys = Object.keys(records).sort();
+
+    const byMonth = {}; // { "2025-06": { days:[], pmSum, scoreSum, count } }
+    const byWeek  = {}; // { "2025-W23": { days:[], label, pmSum, scoreSum, count } }
+
+    dayKeys.forEach(dk => {
+        const avgs = getDayAverages(dk);
+        if (!avgs.length) return;
+
+        const dayPM    = avgs.reduce((s,c) => s + c.pm,    0) / avgs.length;
+        const dayScore = avgs.reduce((s,c) => s + c.score, 0) / avgs.length;
+
+        // Ay grubu
+        const monthKey = dk.slice(0, 7); // "2025-06"
+        if (!byMonth[monthKey]) byMonth[monthKey] = { days:[], pmSum:0, scoreSum:0, count:0 };
+        byMonth[monthKey].days.push(dk);
+        byMonth[monthKey].pmSum    += dayPM;
+        byMonth[monthKey].scoreSum += dayScore;
+        byMonth[monthKey].count++;
+
+        // Hafta grubu
+        const ws = getWeekStart(dk);
+        const d  = new Date(ws);
+        const weekNum = Math.ceil((((d - new Date(d.getFullYear(),0,1)) / 86400000) + 1) / 7);
+        const weekKey = `${d.getFullYear()}-W${String(weekNum).padStart(2,'0')}`;
+        if (!byWeek[weekKey]) {
+            const we = new Date(d); we.setDate(we.getDate()+6);
+            byWeek[weekKey] = {
+                days:[], pmSum:0, scoreSum:0, count:0,
+                label: `${fmtDate(ws)} – ${fmtDate(we.toISOString().slice(0,10))}`
+            };
+        }
+        byWeek[weekKey].days.push(dk);
+        byWeek[weekKey].pmSum    += dayPM;
+        byWeek[weekKey].scoreSum += dayScore;
+        byWeek[weekKey].count++;
+    });
+
+    return { byMonth, byWeek, dayKeys, records };
+}
+
+function histSetView(view, el) {
+    histCurrentView = view;
+    document.querySelectorAll('#hist-btnMonth,#hist-btnWeek,#hist-btnAll').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    renderHistPeriodTable();
+}
+
+function initHistoryPage() {
+    const { dayKeys, byMonth, byWeek } = groupRecords();
+    const records = loadDailyRecords();
+
+    // Özet kartlar
+    document.getElementById('hist-totalDays').innerText = dayKeys.length || '0';
+
+    // Tüm zamanlar PM ortalaması
+    let totalPM = 0, totalPMcount = 0;
+    dayKeys.forEach(dk => {
+        const avgs = getDayAverages(dk);
+        avgs.forEach(c => { totalPM += c.pm; totalPMcount++; });
+    });
+    document.getElementById('hist-overallAvgPM').innerText = totalPMcount ? (totalPM/totalPMcount).toFixed(1) : '-';
+
+    // Tüm zamanlar şampiyonu
+    const allScores = {};
+    dayKeys.forEach(dk => {
+        getDayAverages(dk).forEach(c => {
+            if (!allScores[c.name]) allScores[c.name] = { sum:0, cnt:0 };
+            allScores[c.name].sum += c.score; allScores[c.name].cnt++;
+        });
+    });
+    const allRanked = Object.entries(allScores)
+        .map(([n,v]) => ({ name:n, avg: v.cnt ? Math.round(v.sum/v.cnt) : 0 }))
+        .sort((a,b) => b.avg - a.avg);
+    if (allRanked[0]) {
+        document.getElementById('hist-allTimeChamp').innerText  = allRanked[0].name;
+        document.getElementById('hist-allTimeScore').innerText  = `Ort. ${allRanked[0].avg} puan`;
+    }
+
+    // Bu hafta ortalama puan
+    const thisWeekKeys = getRecentDayKeys(7);
+    let wScoreSum = 0, wScoreCnt = 0;
+    thisWeekKeys.forEach(dk => {
+        const avgs = getDayAverages(dk);
+        avgs.forEach(c => { wScoreSum += c.score; wScoreCnt++; });
+    });
+    document.getElementById('hist-weekScore').innerText = wScoreCnt ? Math.round(wScoreSum/wScoreCnt) : '-';
+
+    // Gün seçici dropdown
+    const sel = document.getElementById('hist-daySelect');
+    sel.innerHTML = dayKeys.length
+        ? dayKeys.slice().reverse().map(dk => `<option value="${dk}">${fmtDate(dk)}</option>`).join('')
+        : '<option value="">Kayıt yok</option>';
+
+    renderHistPeriodTable();
+    renderHistCharts(dayKeys);
+    renderHistDayDetail();
+}
+
+function renderHistPeriodTable() {
+    const { byMonth, byWeek, dayKeys } = groupRecords();
+    const head = document.getElementById('hist-periodHead');
+    const body = document.getElementById('hist-periodBody');
+
+    const thStyle = 'padding:10px 12px;text-align:left;color:var(--text-secondary);font-weight:700;font-size:0.82rem;';
+    const tdStyle = 'padding:10px 12px;border-bottom:1px solid var(--border);font-size:0.85rem;';
+
+    if (histCurrentView === 'month') {
+        head.innerHTML = `<tr style="background:var(--hover-bg)">
+            <th style="${thStyle}">Ay</th>
+            <th style="${thStyle}">Gün Sayısı</th>
+            <th style="${thStyle}">Ort. PM2.5</th>
+            <th style="${thStyle}">Ort. Puan</th>
+            <th style="${thStyle}">Durum</th>
+        </tr>`;
+        const months = Object.keys(byMonth).sort().reverse();
+        body.innerHTML = months.length ? months.map(mk => {
+            const m = byMonth[mk];
+            const avgPM    = (m.pmSum    / m.count).toFixed(1);
+            const avgScore = Math.round(m.scoreSum / m.count);
+            const d = new Date(mk + '-01');
+            const label = d.toLocaleDateString('tr-TR', { month:'long', year:'numeric' });
+            const color = avgPM > 35 ? '#ef4444' : avgPM > 25 ? '#f59e0b' : '#10b981';
+            const status = avgPM > 35 ? '🔴 Kötü' : avgPM > 25 ? '🟠 Orta' : avgPM > 12 ? '🟢 İyi' : '✨ Mükemmel';
+            return `<tr>
+                <td style="${tdStyle}"><strong>${label}</strong></td>
+                <td style="${tdStyle}">${m.count} gün</td>
+                <td style="${tdStyle};color:${color};font-weight:700">${avgPM} µg/m³</td>
+                <td style="${tdStyle};color:var(--accent);font-weight:700">${avgScore}</td>
+                <td style="${tdStyle}">${status}</td>
+            </tr>`;
+        }).join('') : `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-secondary)">Henüz kayıtlı veri yok</td></tr>`;
+
+    } else if (histCurrentView === 'week') {
+        head.innerHTML = `<tr style="background:var(--hover-bg)">
+            <th style="${thStyle}">Hafta</th>
+            <th style="${thStyle}">Gün Sayısı</th>
+            <th style="${thStyle}">Ort. PM2.5</th>
+            <th style="${thStyle}">Ort. Puan</th>
+            <th style="${thStyle}">Haftalık Şampiyon</th>
+        </tr>`;
+        const weeks = Object.keys(byWeek).sort().reverse();
+        body.innerHTML = weeks.length ? weeks.map((wk, wi) => {
+            const w = byWeek[wk];
+            const avgPM    = (w.pmSum    / w.count).toFixed(1);
+            const avgScore = Math.round(w.scoreSum / w.count);
+            // Bu haftanın şampiyonunu hesapla
+            const classScores = {};
+            w.days.forEach(dk => {
+                getDayAverages(dk).forEach(c => {
+                    if (!classScores[c.name]) classScores[c.name] = { sum:0, cnt:0 };
+                    classScores[c.name].sum += c.score; classScores[c.name].cnt++;
+                });
+            });
+            const champ = Object.entries(classScores)
+                .map(([n,v]) => ({ name:n, avg: Math.round(v.sum/v.cnt) }))
+                .sort((a,b) => b.avg - a.avg)[0];
+            const color = avgPM > 35 ? '#ef4444' : avgPM > 25 ? '#f59e0b' : '#10b981';
+            return `<tr>
+                <td style="${tdStyle}"><strong>${w.label}</strong></td>
+                <td style="${tdStyle}">${w.count} gün</td>
+                <td style="${tdStyle};color:${color};font-weight:700">${avgPM} µg/m³</td>
+                <td style="${tdStyle};color:var(--accent);font-weight:700">${avgScore}</td>
+                <td style="${tdStyle}">${champ ? `🏆 ${champ.name} (${champ.avg} puan)` : '-'}</td>
+            </tr>`;
+        }).join('') : `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-secondary)">Henüz kayıtlı veri yok</td></tr>`;
+
+    } else { // 'all' — gün gün
+        head.innerHTML = `<tr style="background:var(--hover-bg)">
+            <th style="${thStyle}">Tarih</th>
+            <th style="${thStyle}">Gün</th>
+            <th style="${thStyle}">Ort. PM2.5</th>
+            <th style="${thStyle}">Ort. Puan</th>
+            <th style="${thStyle}">Günün Şampiyonu</th>
+        </tr>`;
+        body.innerHTML = dayKeys.length ? dayKeys.slice().reverse().map(dk => {
+            const avgs = getDayAverages(dk);
+            if (!avgs.length) return '';
+            const avgPM    = (avgs.reduce((s,c)=>s+c.pm,0)/avgs.length).toFixed(1);
+            const avgScore = Math.round(avgs.reduce((s,c)=>s+c.score,0)/avgs.length);
+            const champ    = [...avgs].sort((a,b)=>b.score-a.score)[0];
+            const dayName  = new Date(dk).toLocaleDateString('tr-TR', {weekday:'long'});
+            const color    = avgPM > 35 ? '#ef4444' : avgPM > 25 ? '#f59e0b' : '#10b981';
+            return `<tr>
+                <td style="${tdStyle}"><strong>${fmtDate(dk)}</strong></td>
+                <td style="${tdStyle};color:var(--text-secondary)">${dayName}</td>
+                <td style="${tdStyle};color:${color};font-weight:700">${avgPM} µg/m³</td>
+                <td style="${tdStyle};color:var(--accent);font-weight:700">${avgScore}</td>
+                <td style="${tdStyle}">${champ ? `🥇 ${champ.name} (${champ.score} puan)` : '-'}</td>
+            </tr>`;
+        }).join('') : `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-secondary)">Henüz kayıtlı veri yok</td></tr>`;
+    }
+}
+
+function renderHistCharts(dayKeys) {
+    // PM Trend Grafiği
+    const pmCanvas = document.getElementById('hist-pmTrendChart');
+    if (pmCanvas) {
+        if (histPmChart) histPmChart.destroy();
+        const labels = dayKeys.map(dk => fmtDate(dk));
+        const pmData = dayKeys.map(dk => {
+            const avgs = getDayAverages(dk);
+            return avgs.length ? parseFloat((avgs.reduce((s,c)=>s+c.pm,0)/avgs.length).toFixed(1)) : null;
+        });
+        const barColors = pmData.map(v => v == null ? '#94a3b8' : v > 35 ? '#ef4444' : v > 25 ? '#f59e0b' : '#10b981');
+        histPmChart = new Chart(pmCanvas, {
+            type: 'bar',
+            data: { labels, datasets: [{
+                label: 'Günlük Ort. PM2.5 (µg/m³)',
+                data: pmData, backgroundColor: barColors, borderRadius: 6
+            }]},
+            options: { responsive:true, maintainAspectRatio:false,
+                scales: { y: { beginAtZero:true, title:{ display:true, text:'PM2.5 (µg/m³)' } } },
+                plugins: { legend:{ position:'top' }, title:{ display:false } }
+            }
+        });
+    }
+
+    // Haftalık Puan Trendi
+    const scCanvas = document.getElementById('hist-weeklyScoreChart');
+    if (scCanvas) {
+        if (histScoreChart) histScoreChart.destroy();
+        // Tüm sınıflardan en iyi 5'i bul
+        const classScoreMap = {};
+        dayKeys.forEach(dk => {
+            getDayAverages(dk).forEach(c => {
+                if (!classScoreMap[c.name]) classScoreMap[c.name] = { sum:0, cnt:0 };
+                classScoreMap[c.name].sum += c.score; classScoreMap[c.name].cnt++;
+            });
+        });
+        const top5 = Object.entries(classScoreMap)
+            .map(([n,v]) => ({ name:n, avg: Math.round(v.sum/v.cnt) }))
+            .sort((a,b) => b.avg - a.avg).slice(0,5);
+
+        const colors = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444'];
+        histScoreChart = new Chart(scCanvas, {
+            type: 'line',
+            data: {
+                labels: dayKeys.map(dk => fmtDate(dk)),
+                datasets: top5.map((cls, i) => ({
+                    label: cls.name,
+                    data: dayKeys.map(dk => {
+                        const avgs = getDayAverages(dk);
+                        const found = avgs.find(c => c.name === cls.name);
+                        return found ? found.score : null;
+                    }),
+                    borderColor: colors[i], backgroundColor: colors[i]+'22',
+                    borderWidth: 2, fill: false, tension: 0.4, pointRadius: 4, spanGaps: true
+                }))
+            },
+            options: { responsive:true, maintainAspectRatio:false,
+                scales: { y: { min:0, max:100, title:{ display:true, text:'Puan (0-100)' } } },
+                plugins: { legend:{ position:'top' } }
+            }
+        });
+    }
+}
+
+function renderHistDayDetail() {
+    const sel  = document.getElementById('hist-daySelect');
+    const tbody = document.getElementById('hist-dayDetailBody');
+    if (!sel || !tbody) return;
+    const dk = sel.value;
+    if (!dk) { tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-secondary)">Kayıt bulunamadı</td></tr>`; return; }
+    const avgs = getDayAverages(dk);
+    if (!avgs.length) { tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-secondary)">Bu gün için kayıt yok</td></tr>`; return; }
+    const sorted = [...avgs].sort((a,b) => b.score - a.score);
+    const tdS = 'padding:10px 12px;border-bottom:1px solid var(--border);font-size:0.85rem;';
+    tbody.innerHTML = sorted.map((c, i) => {
+        const pmColor = c.pm > 35 ? '#ef4444' : c.pm > 25 ? '#f59e0b' : '#10b981';
+        const medal   = i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `${i+1}.`;
+        return `<tr>
+            <td style="${tdS}">${medal}</td>
+            <td style="${tdS}"><strong>${c.name}</strong></td>
+            <td style="${tdS};color:${pmColor};font-weight:700">${c.pm.toFixed(1)} µg/m³</td>
+            <td style="${tdS}">${c.gas.toFixed(0)} PPM</td>
+            <td style="${tdS}">${c.t.toFixed(1)} °C</td>
+            <td style="${tdS};color:var(--accent);font-weight:700">${c.score}</td>
+            <td style="${tdS};color:var(--text-secondary)">${c.count} ölçüm</td>
+        </tr>`;
+    }).join('');
+}
+// ========== / GEÇMİŞ & ANALİZ SAYFASI FONKSİYONLARI ==========
+
     </script>
 </body>
 </html>
