@@ -964,7 +964,7 @@
             </div>
 
             <!-- Günlük Detay Tablosu -->
-            <div class="card">
+            <div class="card" style="margin-bottom:24px">
                 <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
                     <h3 style="margin:0;flex:1">📋 Gün Bazlı Sınıf Ortalamaları</h3>
                     <select id="hist-daySelect" onchange="renderHistDayDetail()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-family:'Sora',sans-serif"></select>
@@ -985,6 +985,33 @@
                         <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-secondary)">Tarih seçin</td></tr>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Haftalık Sınıf Ortalamaları Tablosu -->
+            <div class="card" style="margin-bottom:24px">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+                    <h3 style="margin:0;flex:1">🏫 Her Sınıfın Haftalık Ortalaması</h3>
+                    <select id="hist-weekSelect" onchange="renderHistWeekClassTable()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-family:'Sora',sans-serif"></select>
+                </div>
+                <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+                    <thead>
+                        <tr style="background:var(--hover-bg)">
+                            <th style="padding:10px 12px;text-align:left;color:var(--text-secondary);white-space:nowrap">#</th>
+                            <th style="padding:10px 12px;text-align:left;color:var(--text-secondary);white-space:nowrap">Sınıf</th>
+                            <th style="padding:10px 12px;text-align:left;color:var(--text-secondary);white-space:nowrap">Haf. Ort. PM2.5</th>
+                            <th style="padding:10px 12px;text-align:left;color:var(--text-secondary);white-space:nowrap">Haf. Ort. Gaz</th>
+                            <th style="padding:10px 12px;text-align:left;color:var(--text-secondary);white-space:nowrap">Haf. Ort. Sıcaklık</th>
+                            <th style="padding:10px 12px;text-align:left;color:var(--text-secondary);white-space:nowrap">Haf. Ort. Puan</th>
+                            <th style="padding:10px 12px;text-align:left;color:var(--text-secondary);white-space:nowrap">Veri Günü</th>
+                            <th style="padding:10px 12px;text-align:left;color:var(--text-secondary);white-space:nowrap">Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hist-weekClassBody">
+                        <tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-secondary)">Hafta seçin</td></tr>
+                    </tbody>
+                </table>
+                </div>
             </div>
         </div>
         <!-- ===================== / GEÇMİŞ & ANALİZ SAYFASI ===================== -->
@@ -2203,9 +2230,17 @@ function initHistoryPage() {
         ? dayKeys.slice().reverse().map(dk => `<option value="${dk}">${fmtDate(dk)}</option>`).join('')
         : '<option value="">Kayıt yok</option>';
 
+    // Hafta seçici dropdown
+    const weekSel = document.getElementById('hist-weekSelect');
+    const weekKeys = Object.keys(byWeek).sort().reverse();
+    weekSel.innerHTML = weekKeys.length
+        ? weekKeys.map(wk => `<option value="${wk}">${byWeek[wk].label}</option>`).join('')
+        : '<option value="">Kayıt yok</option>';
+
     renderHistPeriodTable();
     renderHistCharts(dayKeys);
     renderHistDayDetail();
+    renderHistWeekClassTable();
 }
 
 function renderHistPeriodTable() {
@@ -2388,6 +2423,78 @@ function renderHistDayDetail() {
             <td style="${tdS}">${c.t.toFixed(1)} °C</td>
             <td style="${tdS};color:var(--accent);font-weight:700">${c.score}</td>
             <td style="${tdS};color:var(--text-secondary)">${c.count} ölçüm</td>
+        </tr>`;
+    }).join('');
+}
+function renderHistWeekClassTable() {
+    const tbody = document.getElementById('hist-weekClassBody');
+    if (!tbody) return;
+
+    const { byWeek } = groupRecords();
+    const sel = document.getElementById('hist-weekSelect');
+    const wk  = sel?.value;
+
+    if (!wk || !byWeek[wk]) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-secondary)">Hafta seçin</td></tr>`;
+        return;
+    }
+
+    const weekDays = byWeek[wk].days; // O haftanın kayıtlı gün listesi
+
+    // Her sınıf için haftalık birikim
+    const classMap = {}; // { "9-A": { pmSum, gasSum, tSum, scoreSum, dayCnt } }
+    weekDays.forEach(dk => {
+        getDayAverages(dk).forEach(c => {
+            if (!classMap[c.name]) classMap[c.name] = { pmSum:0, gasSum:0, tSum:0, scoreSum:0, dayCnt:0 };
+            const r = classMap[c.name];
+            r.pmSum    += c.pm;
+            r.gasSum   += c.gas;
+            r.tSum     += c.t;
+            r.scoreSum += c.score;
+            r.dayCnt   += 1;
+        });
+    });
+
+    if (!Object.keys(classMap).length) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-secondary)">Bu hafta için sınıf verisi bulunamadı</td></tr>`;
+        return;
+    }
+
+    // Skor'a göre sırala
+    const ranked = Object.entries(classMap)
+        .map(([name, r]) => ({
+            name,
+            pm:    parseFloat((r.pmSum    / r.dayCnt).toFixed(1)),
+            gas:   parseFloat((r.gasSum   / r.dayCnt).toFixed(0)),
+            t:     parseFloat((r.tSum     / r.dayCnt).toFixed(1)),
+            score: Math.round(r.scoreSum  / r.dayCnt),
+            days:  r.dayCnt
+        }))
+        .sort((a, b) => b.score - a.score);
+
+    const tdS = 'padding:10px 12px;border-bottom:1px solid var(--border);font-size:0.85rem;';
+    tbody.innerHTML = ranked.map((c, i) => {
+        const pmColor  = c.pm > 35 ? '#ef4444' : c.pm > 25 ? '#f59e0b' : '#10b981';
+        const gasColor = c.gas > 400 ? '#ef4444' : c.gas > 300 ? '#f59e0b' : 'var(--text-primary)';
+        const status   = c.pm > 35 ? '🔴 Kötü' : c.pm > 25 ? '🟠 Orta' : c.pm > 12 ? '🟢 İyi' : '✨ Mükemmel';
+        const medal    = i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `${i+1}.`;
+        const scoreColor = c.score >= 80 ? '#10b981' : c.score >= 60 ? '#f59e0b' : '#ef4444';
+        return `<tr style="transition:background 0.2s" onmouseover="this.style.background='var(--hover-bg)'" onmouseout="this.style.background=''">
+            <td style="${tdS}">${medal}</td>
+            <td style="${tdS}"><strong>${c.name}</strong></td>
+            <td style="${tdS};color:${pmColor};font-weight:700">${c.pm} µg/m³</td>
+            <td style="${tdS};color:${gasColor}">${c.gas} PPM</td>
+            <td style="${tdS}">${c.t} °C</td>
+            <td style="${tdS}">
+                <span style="display:inline-flex;align-items:center;gap:6px">
+                    <span style="font-size:1.1rem;font-weight:800;color:${scoreColor}">${c.score}</span>
+                    <span style="width:60px;height:8px;background:var(--border);border-radius:4px;display:inline-block;overflow:hidden">
+                        <span style="display:block;height:100%;width:${c.score}%;background:${scoreColor};border-radius:4px;transition:width 0.5s"></span>
+                    </span>
+                </span>
+            </td>
+            <td style="${tdS};color:var(--text-secondary)">${c.days} gün</td>
+            <td style="${tdS}">${status}</td>
         </tr>`;
     }).join('');
 }
