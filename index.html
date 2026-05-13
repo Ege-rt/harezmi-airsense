@@ -788,8 +788,15 @@
         <div class="nav-item" onclick="showPage('analytics', this)"><i class="fas fa-chart-pie"></i> Analitik Raporlar</div>
         <div class="nav-item" onclick="showPage('map', this)"><i class="fas fa-map-marked-alt"></i> Okul Haritası</div>
         <div class="nav-item" onclick="showPage('history', this)"><i class="fas fa-calendar-alt"></i> Geçmiş & Analiz</div>
+        <div class="nav-item" onclick="showPage('heatmap', this)"><i class="fas fa-fire"></i> Isı Haritası</div>
+        <div class="nav-item" onclick="showPage('compare', this)"><i class="fas fa-code-compare"></i> Karşılaştırma</div>
+        <div class="nav-item" onclick="showPage('fanstats', this)"><i class="fas fa-fan"></i> Fan İstatistikleri</div>
         <div class="nav-item" id="navUsers" onclick="showPage('users', this)"><i class="fas fa-users"></i> Kullanıcılar</div>
         <div class="nav-item" id="navSettings" onclick="showPage('settings', this)"><i class="fas fa-cog"></i> Sistem Ayarları</div>
+        <div id="notifBell" onclick="toggleNotifPanel()" style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:12px;cursor:pointer;color:var(--sidebar-text);font-size:0.88rem;font-weight:600;position:relative;transition:0.2s;" onmouseover="this.style.background='var(--hover-bg)'" onmouseout="this.style.background=''">
+            <i class="fas fa-bell"></i> Bildirimler
+            <span id="notifCount" style="display:none;position:absolute;top:8px;right:12px;background:#ef4444;color:white;border-radius:50%;width:18px;height:18px;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:700">0</span>
+        </div>
         <div class="dark-mode-toggle" onclick="toggleDarkMode()">
             <span><i class="fas fa-moon"></i> Koyu Tema</span>
             <div class="toggle-switch"></div>
@@ -1016,6 +1023,105 @@
         </div>
         <!-- ===================== / GEÇMİŞ & ANALİZ SAYFASI ===================== -->
 
+        <!-- ===== ISI HARİTASI ===== -->
+        <div id="heatmap" class="page">
+            <h1>🔥 Kat Bazlı Isı Haritası</h1>
+            <div class="card" style="margin-bottom:20px">
+                <p style="color:var(--text-secondary);font-size:0.88rem"><i class="fas fa-info-circle"></i> Her kat için PM2.5 seviyesine göre renk yoğunluğu gösterilir. Kırmızı = kirli, yeşil = temiz.</p>
+                <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">
+                    <span style="display:flex;align-items:center;gap:6px;font-size:0.8rem"><span style="width:16px;height:16px;background:#10b981;border-radius:4px;display:inline-block"></span> Mükemmel (≤12)</span>
+                    <span style="display:flex;align-items:center;gap:6px;font-size:0.8rem"><span style="width:16px;height:16px;background:#3b82f6;border-radius:4px;display:inline-block"></span> İyi (12-25)</span>
+                    <span style="display:flex;align-items:center;gap:6px;font-size:0.8rem"><span style="width:16px;height:16px;background:#f59e0b;border-radius:4px;display:inline-block"></span> Orta (25-35)</span>
+                    <span style="display:flex;align-items:center;gap:6px;font-size:0.8rem"><span style="width:16px;height:16px;background:#ef4444;border-radius:4px;display:inline-block"></span> Kötü (>35)</span>
+                </div>
+            </div>
+            <div id="heatmapContainer"></div>
+        </div>
+
+        <!-- ===== KARŞILAŞTIRMA ===== -->
+        <div id="compare" class="page">
+            <h1>🔀 Sınıf Karşılaştırma</h1>
+            <div class="card" style="margin-bottom:20px">
+                <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+                    <div>
+                        <label style="display:block;margin-bottom:6px;font-size:0.8rem;font-weight:700;color:var(--text-secondary)">1. SINIF</label>
+                        <select id="cmp-class1" style="padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-family:'Sora',sans-serif;min-width:140px"></select>
+                    </div>
+                    <div>
+                        <label style="display:block;margin-bottom:6px;font-size:0.8rem;font-weight:700;color:var(--text-secondary)">2. SINIF</label>
+                        <select id="cmp-class2" style="padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-family:'Sora',sans-serif;min-width:140px"></select>
+                    </div>
+                    <div>
+                        <label style="display:block;margin-bottom:6px;font-size:0.8rem;font-weight:700;color:var(--text-secondary)">DÖNEM</label>
+                        <select id="cmp-period" style="padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-family:'Sora',sans-serif">
+                            <option value="7">Son 7 Gün</option>
+                            <option value="14">Son 14 Gün</option>
+                            <option value="30">Son 30 Gün</option>
+                        </select>
+                    </div>
+                    <button onclick="renderComparison()" style="padding:10px 22px;background:var(--accent);color:white;border:none;border-radius:8px;cursor:pointer;font-family:'Sora',sans-serif;font-weight:600">Karşılaştır</button>
+                </div>
+            </div>
+            <div class="stats-grid" id="cmp-cards" style="margin-bottom:20px"></div>
+            <div class="card" style="margin-bottom:20px">
+                <h3>📈 PM2.5 Karşılaştırma Grafiği</h3>
+                <div class="chart-box"><canvas id="cmp-pmChart"></canvas></div>
+            </div>
+            <div class="card">
+                <h3>🏅 Puan Karşılaştırma Grafiği</h3>
+                <div class="chart-box"><canvas id="cmp-scoreChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- ===== FAN İSTATİSTİKLERİ ===== -->
+        <div id="fanstats" class="page">
+            <h1>🌀 Fan İstatistikleri</h1>
+            <div class="stats-grid" style="margin-bottom:20px">
+                <div class="card" style="text-align:center">
+                    <div style="font-size:2rem;margin-bottom:8px">🌀</div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;letter-spacing:.07em;text-transform:uppercase">Şu An Çalışan Fan</div>
+                    <div style="font-size:2.2rem;font-weight:800;color:var(--accent);margin-top:8px" id="fan-activeCount">-</div>
+                </div>
+                <div class="card" style="text-align:center">
+                    <div style="font-size:2rem;margin-bottom:8px">⚡</div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;letter-spacing:.07em;text-transform:uppercase">En Çok Çalışan Sınıf</div>
+                    <div style="font-size:1.6rem;font-weight:800;color:var(--warning);margin-top:8px" id="fan-mostActive">-</div>
+                </div>
+                <div class="card" style="text-align:center">
+                    <div style="font-size:2rem;margin-bottom:8px">🔒</div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;letter-spacing:.07em;text-transform:uppercase">Manuel Override</div>
+                    <div style="font-size:2.2rem;font-weight:800;color:var(--danger);margin-top:8px" id="fan-manualCount">-</div>
+                </div>
+            </div>
+            <div class="card">
+                <h3>📊 Sınıf Bazlı Fan Durumu</h3>
+                <div style="overflow-x:auto">
+                <table class="class-table">
+                    <thead><tr>
+                        <th>Sınıf</th><th>Fan Durumu</th><th>Override</th><th>PM2.5</th><th>Gaz</th><th>Otomatik Açılma Nedeni</th>
+                    </tr></thead>
+                    <tbody id="fan-tableBody"></tbody>
+                </table>
+                </div>
+            </div>
+            <div class="card" style="margin-top:20px">
+                <h3>📈 Bugün PM2.5 vs Fan Aktivasyonu</h3>
+                <div class="chart-box"><canvas id="fan-chart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- ===== BİLDİRİM PANELİ ===== -->
+        <div id="notifPanel" style="display:none;position:fixed;top:0;right:0;width:340px;height:100vh;background:var(--card);border-left:1px solid var(--border);z-index:2000;box-shadow:-4px 0 24px rgba(0,0,0,0.15);overflow-y:auto;font-family:'Sora',sans-serif">
+            <div style="padding:20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+                <h3 style="margin:0"><i class="fas fa-bell"></i> Bildirimler</h3>
+                <div style="display:flex;gap:8px">
+                    <button onclick="clearNotifs()" style="background:none;border:1px solid var(--border);color:var(--text-secondary);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.75rem">Temizle</button>
+                    <button onclick="toggleNotifPanel()" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div id="notifList" style="padding:12px"></div>
+        </div>
+
         <div id="settings" class="page">
             <h1>⚙️ Sistem Ayarları</h1>
             <div class="card" style="max-width:600px">
@@ -1024,6 +1130,8 @@
                 <div class="form-group"><label>Kritik Gaz Seviyesi (PPM)</label><input type="number" id="gasThreshold" value="400"></div>
                 <div class="form-group"><label>Ölçüm Sıklığı (saniye)</label><input type="number" id="measureInterval" value="5"></div>
                 <div class="form-group"><label>Sesli Alarm</label><select id="soundAlarm"><option value="on">Açık</option><option value="off">Kapalı</option></select></div>
+                <div class="form-group"><label>🔔 Tarayıcı Bildirimleri</label><button onclick="requestNotifPermission()" style="padding:10px 20px;background:var(--accent);color:white;border:none;border-radius:8px;cursor:pointer;font-family:'Sora',sans-serif;font-weight:600"><i class="fas fa-bell"></i> Bildirimlere İzin Ver</button><small style="display:block;margin-top:6px;color:var(--text-secondary)" id="notifPermStatus">Durum: bilinmiyor</small></div>
+                <div class="form-group"><label>📅 Otomatik Haftalık PDF</label><select id="autoPdfDay"><option value="-1">Kapalı</option><option value="5">Her Cuma</option><option value="0">Her Pazar</option><option value="1">Her Pazartesi</option></select><small style="display:block;margin-top:6px;color:var(--text-secondary)">Seçilen gün saat 17:00'da otomatik PDF oluşturulur</small></div>
                 <div class="form-group"><label>Alarm Seviyesi (PM2.5)</label><select id="alarmLevel"><option value="20">Hassas (20 PM2.5)</option><option value="25" selected>Normal (25 PM2.5)</option><option value="35">Ekonomik (35 PM2.5)</option></select></div>
                 <div class="form-group"><label>🌓 Görünüm Modu</label><select id="darkModeSelect" onchange="changeDarkModeFromSelect()"><option value="light">☀️ Aydınlık Tema</option><option value="dark">🌙 Koyu Tema</option></select></div>
                 <button class="btn-save" onclick="saveSystemSettings()">Tüm Ayarları Güncelle</button>
@@ -1515,6 +1623,9 @@ function showPage(pageId, element) {
     if (pageId==='map') renderSchoolMap();
     if (pageId==='users') renderUsersTable();
     if (pageId==='history') initHistoryPage();
+    if (pageId==='heatmap') renderHeatmap();
+    if (pageId==='compare') initComparePage();
+    if (pageId==='fanstats') renderFanStats();
 }
 
 function updateStats() {
@@ -1822,6 +1933,10 @@ async function fetchSensorData() {
         renderSchoolMap();
         updatePodium();
         if (weeklyChart) initChampionsChart();
+        checkAlarms();
+        trackFanStats();
+        if (document.getElementById('heatmap')?.classList.contains('active')) renderHeatmap();
+        if (document.getElementById('fanstats')?.classList.contains('active')) renderFanStats();
     } catch (e) {
         // 1. PROBLEM: Fetch fail olunca sahte "eski veri" hissini önle
         _consecutiveFailCount++;
@@ -2038,6 +2153,13 @@ function initApp() {
             if (document.getElementById('history')?.classList.contains('active')) initHistoryPage();
         }
     });
+
+    // Bildirim izni durumunu göster
+    updateNotifPermStatus();
+    // Otomatik PDF zamanlayıcısı başlat
+    startAutoPdfScheduler();
+    // PWA kayıt
+    registerPWA();
 }
 
 // --- PDF Üretme Fonksiyonları ---
@@ -2086,9 +2208,8 @@ function initApp() {
                 });
             });
 
-            // Anlık veri: sadece bugün için getDayAverages'ta yoksa ekle (çift sayım önlemi)
-            const todayAvgNames = new Set(getDayAverages(getTodayKey()).map(c => c.name));
-            classData.filter(c => c.hasData && c.pm != null && !todayAvgNames.has(c.name)).forEach(c => {
+            // Anlık veri de varsa ekle
+            classData.filter(c => c.hasData && c.pm != null).forEach(c => {
                 if (!classWeekly[c.name]) classWeekly[c.name] = { pmSum: c.pm, gasSum: c.gas||0, scoreSum: c.score||0, count: 1 };
             });
 
@@ -2565,6 +2686,366 @@ function renderHistWeekClassTable() {
 }
 // ========== / GEÇMİŞ & ANALİZ SAYFASI FONKSİYONLARI ==========
 
-    </script>
+    
+// ═══════════════════════════════════════════════════
+// 🔔 BİLDİRİM SİSTEMİ
+// ═══════════════════════════════════════════════════
+let notifications = [];
+let lastAlarmState = {}; // { className: bool } — tekrar alarm verme
+
+function requestNotifPermission() {
+    if (!('Notification' in window)) {
+        alert('Bu tarayıcı bildirimleri desteklemiyor.');
+        return;
+    }
+    Notification.requestPermission().then(p => {
+        updateNotifPermStatus();
+        if (p === 'granted') addNotif('info', 'Bildirimler aktif!', 'Kritik hava kalitesi uyarıları tarayıcıya gelecek.');
+    });
+}
+
+function updateNotifPermStatus() {
+    const el = document.getElementById('notifPermStatus');
+    if (!el) return;
+    if (!('Notification' in window)) { el.textContent = 'Durum: Desteklenmiyor'; return; }
+    const map = { granted:'✅ İzin verildi', denied:'❌ Engellendi', default:'⏳ Henüz karar verilmedi' };
+    el.textContent = 'Durum: ' + (map[Notification.permission] || '-');
+}
+
+function sendBrowserNotif(title, body) {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification(title, { body, icon: 'logo.jpg' });
+    }
+}
+
+function addNotif(type, title, body) {
+    const n = { id: Date.now(), type, title, body, time: new Date().toLocaleTimeString('tr-TR') };
+    notifications.unshift(n);
+    if (notifications.length > 50) notifications.pop();
+    renderNotifList();
+    updateNotifBadge();
+}
+
+function renderNotifList() {
+    const el = document.getElementById('notifList');
+    if (!el) return;
+    if (!notifications.length) {
+        el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)"><i class="fas fa-bell-slash" style="font-size:2rem;opacity:0.3;display:block;margin-bottom:8px"></i>Henüz bildirim yok</div>';
+        return;
+    }
+    const colors = { critical:'#ef4444', warning:'#f59e0b', info:'#3b82f6', success:'#10b981' };
+    el.innerHTML = notifications.map(n => `
+        <div style="padding:12px;border-radius:10px;background:var(--bg);margin-bottom:8px;border-left:3px solid ${colors[n.type]||'#64748b'}">
+            <div style="font-weight:700;font-size:0.85rem;color:var(--text-primary)">${n.title}</div>
+            <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${n.body}</div>
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;opacity:0.6">${n.time}</div>
+        </div>`).join('');
+}
+
+function updateNotifBadge() {
+    const el = document.getElementById('notifCount');
+    if (!el) return;
+    const cnt = notifications.filter(n => n.type === 'critical' || n.type === 'warning').length;
+    if (cnt > 0) { el.textContent = cnt > 9 ? '9+' : cnt; el.style.display = 'flex'; }
+    else el.style.display = 'none';
+}
+
+function toggleNotifPanel() {
+    const p = document.getElementById('notifPanel');
+    if (!p) return;
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    if (p.style.display === 'block') renderNotifList();
+}
+
+function clearNotifs() {
+    notifications = [];
+    renderNotifList();
+    updateNotifBadge();
+}
+
+function checkAlarms() {
+    const withData = classData.filter(c => c.hasData);
+    withData.forEach(c => {
+        const isCritical = c.pm > 40 || c.gas > 500;
+        const isWarning  = !isCritical && (c.pm > 30 || c.gas > 400);
+        const wasAlerted = lastAlarmState[c.name];
+
+        if (isCritical && !wasAlerted) {
+            addNotif('critical', `🚨 KRİTİK: ${c.name}`, `PM2.5: ${c.pm?.toFixed(1)} µg/m³ | Gaz: ${c.gas?.toFixed(0)} PPM — Sınıf boşaltılmalı!`);
+            sendBrowserNotif(`🚨 Kritik Hava Kalitesi — ${c.name}`, `PM: ${c.pm?.toFixed(1)} | Gaz: ${c.gas?.toFixed(0)} PPM`);
+            totalAlarmCount++;
+            lastAlarmState[c.name] = true;
+        } else if (isWarning && !wasAlerted) {
+            addNotif('warning', `⚠️ UYARI: ${c.name}`, `PM2.5: ${c.pm?.toFixed(1)} µg/m³ | Gaz: ${c.gas?.toFixed(0)} PPM — Havalandırma önerilir`);
+            lastAlarmState[c.name] = true;
+        } else if (!isCritical && !isWarning) {
+            lastAlarmState[c.name] = false;
+        }
+    });
+}
+
+// ═══════════════════════════════════════════════════
+// 🔥 ISI HARİTASI
+// ═══════════════════════════════════════════════════
+function renderHeatmap() {
+    const container = document.getElementById('heatmapContainer');
+    if (!container) return;
+
+    const floors = [
+        { name: 'Zemin Kat', floorNum: 0 },
+        { name: '1. Kat',    floorNum: 1 },
+        { name: '2. Kat',    floorNum: 2 },
+        { name: '3. Kat',    floorNum: 3 }
+    ];
+
+    function pmToColor(pm, hasData) {
+        if (!hasData || pm == null) return { bg: '#1e293b', border: '#334155', text: '#64748b' };
+        if (pm <= 12)  return { bg: '#052e16', border: '#10b981', text: '#10b981' };
+        if (pm <= 25)  return { bg: '#0c1a3a', border: '#3b82f6', text: '#3b82f6' };
+        if (pm <= 35)  return { bg: '#2d1a00', border: '#f59e0b', text: '#f59e0b' };
+        return { bg: '#2d0a0a', border: '#ef4444', text: '#ef4444' };
+    }
+
+    container.innerHTML = floors.map(floor => {
+        const floorClasses = classData.filter(c => c.floorNum === floor.floorNum);
+        if (!floorClasses.length) return '';
+
+        const avgPm = floorClasses.filter(c => c.hasData).reduce((s,c,_,a) => s + c.pm/a.length, 0);
+        const floorColor = pmToColor(avgPm, floorClasses.some(c => c.hasData));
+
+        const cells = floorClasses.map(c => {
+            const col = pmToColor(c.pm, c.hasData);
+            return `<div onclick="showClassDetails('${c.name}')" style="
+                background:${col.bg};border:2px solid ${col.border};border-radius:10px;
+                padding:10px 6px;text-align:center;cursor:pointer;transition:0.2s;min-width:70px;
+                " onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
+                <div style="font-weight:700;font-size:0.82rem;color:white">${c.name}</div>
+                <div style="font-size:0.75rem;color:${col.text};font-weight:700;margin-top:4px">${c.hasData ? c.pm?.toFixed(1)+' µg/m³' : '—'}</div>
+                <div style="width:8px;height:8px;border-radius:50%;background:${c.online?'#10b981':'#ef4444'};margin:4px auto 0"></div>
+            </div>`;
+        }).join('');
+
+        return `<div class="card" style="margin-bottom:20px;border-left:4px solid ${floorColor.border}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+                <h3 style="margin:0">${floor.name}</h3>
+                <span style="font-size:0.82rem;color:${floorColor.text};font-weight:700">
+                    Ort. PM2.5: ${floorClasses.some(c=>c.hasData) ? avgPm.toFixed(1)+' µg/m³' : '—'}
+                </span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px">${cells}</div>
+        </div>`;
+    }).join('');
+}
+
+// ═══════════════════════════════════════════════════
+// 🔀 SINIF KARŞILAŞTIRMA
+// ═══════════════════════════════════════════════════
+let cmpPmChart = null, cmpScoreChart = null;
+
+function initComparePage() {
+    const records = loadDailyRecords();
+    const allClassNames = [...new Set(
+        Object.values(records).flatMap(day => Object.keys(day))
+    )].sort();
+
+    const sel1 = document.getElementById('cmp-class1');
+    const sel2 = document.getElementById('cmp-class2');
+    if (!sel1 || !sel2) return;
+
+    const opts = allClassNames.map(n => `<option value="${n}">${n}</option>`).join('');
+    sel1.innerHTML = opts;
+    sel2.innerHTML = opts;
+    if (allClassNames.length > 1) sel2.value = allClassNames[1];
+
+    renderComparison();
+}
+
+function renderComparison() {
+    const c1 = document.getElementById('cmp-class1')?.value;
+    const c2 = document.getElementById('cmp-class2')?.value;
+    const days = parseInt(document.getElementById('cmp-period')?.value || 7);
+    if (!c1 || !c2) return;
+
+    const dayKeys = Object.keys(loadDailyRecords()).sort().slice(-days);
+
+    function getClassDayData(cls, dk) {
+        const avgs = getDayAverages(dk);
+        return avgs.find(c => c.name === cls) || null;
+    }
+
+    function classOverallAvg(cls) {
+        let pmS=0, scS=0, cnt=0;
+        dayKeys.forEach(dk => {
+            const d = getClassDayData(cls, dk);
+            if (d) { pmS+=d.pm; scS+=d.score; cnt++; }
+        });
+        return cnt ? { pm: (pmS/cnt).toFixed(1), score: Math.round(scS/cnt), days: cnt } : null;
+    }
+
+    const avg1 = classOverallAvg(c1);
+    const avg2 = classOverallAvg(c2);
+
+    const cardsEl = document.getElementById('cmp-cards');
+    if (cardsEl) {
+        function card(cls, avg, color) {
+            if (!avg) return `<div class="card" style="border-top:4px solid ${color};text-align:center"><h3>${cls}</h3><p style="color:var(--text-secondary)">Yeterli veri yok</p></div>`;
+            const winner = avg1 && avg2 ? (parseFloat(avg1.pm) < parseFloat(avg2.pm) ? c1 : c2) : null;
+            const isWinner = cls === winner;
+            return `<div class="card" style="border-top:4px solid ${color};text-align:center;position:relative">
+                ${isWinner ? '<div style="position:absolute;top:-12px;right:12px;background:#ffd700;color:#000;padding:2px 10px;border-radius:20px;font-size:0.72rem;font-weight:700">🏆 DAHA TEMİZ</div>' : ''}
+                <h2 style="color:${color};margin-bottom:12px">${cls}</h2>
+                <div style="font-size:2rem;font-weight:800;color:var(--text-primary)">${avg.pm} <small style="font-size:0.9rem">µg/m³</small></div>
+                <div style="color:var(--text-secondary);font-size:0.82rem">Ort. PM2.5</div>
+                <div style="font-size:1.5rem;font-weight:700;color:var(--accent);margin-top:10px">${avg.score} <small style="font-size:0.8rem">puan</small></div>
+                <div style="color:var(--text-secondary);font-size:0.82rem">${avg.days} günlük veri</div>
+            </div>`;
+        }
+        cardsEl.innerHTML = card(c1, avg1, '#3b82f6') + card(c2, avg2, '#10b981');
+    }
+
+    const labels = dayKeys.map(dk => new Date(dk).toLocaleDateString('tr-TR', {day:'numeric',month:'short'}));
+    const d1pm    = dayKeys.map(dk => getClassDayData(c1, dk)?.pm    ?? null);
+    const d2pm    = dayKeys.map(dk => getClassDayData(c2, dk)?.pm    ?? null);
+    const d1score = dayKeys.map(dk => getClassDayData(c1, dk)?.score ?? null);
+    const d2score = dayKeys.map(dk => getClassDayData(c2, dk)?.score ?? null);
+
+    const pmCanvas = document.getElementById('cmp-pmChart');
+    if (pmCanvas) {
+        if (cmpPmChart) cmpPmChart.destroy();
+        cmpPmChart = new Chart(pmCanvas, {
+            type:'line',
+            data:{ labels, datasets:[
+                { label:c1, data:d1pm, borderColor:'#3b82f6', backgroundColor:'#3b82f620', tension:0.4, fill:true, spanGaps:true },
+                { label:c2, data:d2pm, borderColor:'#10b981', backgroundColor:'#10b98120', tension:0.4, fill:true, spanGaps:true }
+            ]},
+            options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top'}}, scales:{y:{beginAtZero:true,title:{display:true,text:'PM2.5 (µg/m³)'}}} }
+        });
+    }
+
+    const scCanvas = document.getElementById('cmp-scoreChart');
+    if (scCanvas) {
+        if (cmpScoreChart) cmpScoreChart.destroy();
+        cmpScoreChart = new Chart(scCanvas, {
+            type:'line',
+            data:{ labels, datasets:[
+                { label:c1, data:d1score, borderColor:'#3b82f6', backgroundColor:'#3b82f620', tension:0.4, fill:true, spanGaps:true },
+                { label:c2, data:d2score, borderColor:'#10b981', backgroundColor:'#10b98120', tension:0.4, fill:true, spanGaps:true }
+            ]},
+            options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top'}}, scales:{y:{min:0,max:100,title:{display:true,text:'Puan (0-100)'}}} }
+        });
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// 🌀 FAN İSTATİSTİKLERİ
+// ═══════════════════════════════════════════════════
+let fanHistory = {}; // { className: activationCount }
+let fanChart = null;
+
+function trackFanStats() {
+    classData.forEach(c => {
+        if (c.hasData && c.fanState) {
+            if (!fanHistory[c.name]) fanHistory[c.name] = 0;
+            fanHistory[c.name]++;
+        }
+    });
+}
+
+function renderFanStats() {
+    const withData = classData.filter(c => c.hasData);
+    const active = withData.filter(c => c.fanState);
+    const manual = withData.filter(c => c.fanManual);
+
+    const el = (id) => document.getElementById(id);
+    if(el('fan-activeCount')) el('fan-activeCount').textContent = active.length;
+    if(el('fan-manualCount')) el('fan-manualCount').textContent = manual.length;
+
+    const topFan = Object.entries(fanHistory).sort((a,b)=>b[1]-a[1])[0];
+    if(el('fan-mostActive')) el('fan-mostActive').textContent = topFan ? `${topFan[0]} (${topFan[1]}x)` : '-';
+
+    const tbody = el('fan-tableBody');
+    if (tbody) {
+        const sorted = [...withData].sort((a,b) => (b.fanState?1:0)-(a.fanState?1:0));
+        tbody.innerHTML = sorted.map(c => {
+            const reason = c.fanState
+                ? (c.fanManual ? '🔒 Manuel açık'
+                    : c.pm > 25 ? `💨 PM2.5 yüksek (${c.pm?.toFixed(1)})`
+                    : c.gas > 400 ? `🧪 Gaz yüksek (${c.gas?.toFixed(0)} PPM)`
+                    : '⚙️ Otomatik')
+                : (c.fanManual ? '🔒 Manuel kapalı' : '✅ Gerekmiyor');
+            return `<tr>
+                <td><b>${c.name}</b></td>
+                <td><span style="color:${c.fanState?'#10b981':'#64748b'};font-weight:700">${c.fanState?'🟢 Çalışıyor':'⚫ Durdu'}</span></td>
+                <td>${c.fanManual?'<span style="color:#f59e0b">🔒 Evet</span>':'—'}</td>
+                <td style="color:${c.pm>25?'#ef4444':'#10b981'}">${c.pm?.toFixed(1) ?? '—'} µg/m³</td>
+                <td style="color:${c.gas>400?'#ef4444':'var(--text-primary)'}">${c.gas?.toFixed(0) ?? '—'} PPM</td>
+                <td style="font-size:0.82rem;color:var(--text-secondary)">${reason}</td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-secondary)">Veri bekleniyor...</td></tr>';
+    }
+
+    // Fan vs PM grafiği (saatlik snapshot'tan)
+    const hourlySnaps = getHourlyTrend();
+    const fanCanvas = el('fan-chart');
+    if (fanCanvas && hourlySnaps.length) {
+        if (fanChart) fanChart.destroy();
+        const activeFans = hourlySnaps.map(s => classData.filter(c => c.fanState).length);
+        fanChart = new Chart(fanCanvas, {
+            type: 'line',
+            data: {
+                labels: hourlySnaps.map(s => s.time),
+                datasets: [
+                    { label: 'Ort. PM2.5', data: hourlySnaps.map(s => s.pm), borderColor: '#ef4444', backgroundColor: '#ef444420', tension: 0.4, fill: true, yAxisID: 'y' },
+                    { label: 'Çalışan Fan Sayısı', data: activeFans, borderColor: '#10b981', backgroundColor: '#10b98120', tension: 0.4, fill: true, yAxisID: 'y1' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } },
+                scales: {
+                    y:  { beginAtZero: true, title: { display: true, text: 'PM2.5 (µg/m³)' }, position: 'left' },
+                    y1: { beginAtZero: true, title: { display: true, text: 'Fan Sayısı' }, position: 'right', grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// 📅 OTOMATİK HAFTALIK PDF ZAMANLANICI
+// ═══════════════════════════════════════════════════
+let autoPdfTimer = null;
+
+function startAutoPdfScheduler() {
+    if (autoPdfTimer) clearInterval(autoPdfTimer);
+    autoPdfTimer = setInterval(() => {
+        const dayPref = parseInt(document.getElementById('autoPdfDay')?.value ?? '-1');
+        if (dayPref === -1) return;
+        const now = new Date();
+        if (now.getDay() === dayPref && now.getHours() === 17 && now.getMinutes() === 0) {
+            generateWeeklyPDF();
+            addNotif('success', '📄 Haftalık PDF oluşturuldu', 'Otomatik rapor indirildi.');
+        }
+    }, 60 * 1000); // Her dakika kontrol
+}
+
+// ═══════════════════════════════════════════════════
+// 📱 PWA KAYIT
+// ═══════════════════════════════════════════════════
+function registerPWA() {
+    if ('serviceWorker' in navigator) {
+        // Inline service worker — cache + offline destek
+        const swCode = `
+self.addEventListener('install', e => self.skipWaiting());
+self.addEventListener('activate', e => clients.claim());
+self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));
+`;
+        const blob = new Blob([swCode], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(blob);
+        navigator.serviceWorker.register(swUrl).catch(() => {});
+    }
+}
+// ═══════════════════════════════════════════════════
+</script>
 </body>
 </html>
