@@ -266,6 +266,80 @@ app.get("/api/sensors", (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// API: HISTORY - Günlük ortalama (cihazdan cihaza erişim)
+// GET /api/history/daily?days=30
+// ─────────────────────────────────────────────
+app.get("/api/history/daily", async (req, res) => {
+    const days = Math.min(parseInt(req.query.days) || 30, 90);
+
+    try {
+        const since = new Date();
+        since.setDate(since.getDate() - days);
+
+        const records = await historyCollection.find(
+            { timestamp: { $gte: since } },
+            { projection: { _id: 0, deviceId: 1, class: 1, temperature: 1, humidity: 1, pm25: 1, gas: 1, timestamp: 1 } }
+        ).sort({ timestamp: 1 }).toArray();
+
+        // Günlük + sınıf bazında grupla
+        const grouped = {}; // { "2025-06-10": { "9-A": { pmSum, gasSum, tSum, count, scoreSum } } }
+
+        records.forEach(r => {
+            if (!r.class || r.pm25 == null) return;
+
+            const dk = new Date(r.timestamp).toISOString().slice(0, 10);
+            const className = r.class;
+
+            if (!grouped[dk]) grouped[dk] = {};
+            if (!grouped[dk][className]) grouped[dk][className] = { pmSum: 0, gasSum: 0, tSum: 0, count: 0, scoreSum: 0 };
+
+            const entry = grouped[dk][className];
+            const pm  = Number(r.pm25)      || 0;
+            const gas = Number(r.gas)        || 0;
+            const t   = Number(r.temperature)|| 0;
+
+            // Skor hesapla (frontend ile aynı formül)
+            let score = 100;
+            if      (pm <= 12)  score -= 0;
+            else if (pm <= 25)  score -= (pm - 12) * 2;
+            else if (pm <= 50)  score -= 26 + (pm - 25) * 1.2;
+            else                score -= 56;
+            score -= Math.min(35, (gas / 1000) * 35);
+            if      (t > 28) score -= Math.min(15, (t - 28) * 2);
+            else if (t < 18) score -= Math.min(10, (18 - t) * 1);
+            score = Math.min(100, Math.max(1, Math.floor(score)));
+
+            entry.pmSum    += pm;
+            entry.gasSum   += gas;
+            entry.tSum     += t;
+            entry.scoreSum += score;
+            entry.count    += 1;
+        });
+
+        // Frontend'in beklediği formata çevir
+        const result = {};
+        Object.entries(grouped).forEach(([dk, classes]) => {
+            result[dk] = {};
+            Object.entries(classes).forEach(([name, r]) => {
+                result[dk][name] = {
+                    pmSum:    r.pmSum,
+                    gasSum:   r.gasSum,
+                    tSum:     r.tSum,
+                    scoreSum: r.scoreSum,
+                    count:    r.count
+                };
+            });
+        });
+
+        res.json(result);
+
+    } catch (err) {
+        console.error("History daily error:", err.message);
+        res.status(500).json({ error: "DB error" });
+    }
+});
+
+// ─────────────────────────────────────────────
 // API: STATUS
 // ─────────────────────────────────────────────
 app.get("/api/status", async (req, res) => {
