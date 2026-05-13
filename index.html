@@ -935,6 +935,122 @@ let weeklyChart, hourlyTrendChart, dailyAvgChart, weeklyTrendChart, pieChart;
 // Backend URL - aynı sunucudan serve edildiği için relative path
 const BACKEND_URL = '';
 
+// ========== GÜNLÜK VERİ KAYIT SİSTEMİ ==========
+// localStorage'da tutulur: { "2025-06-10": { "9-A": {pmSum, gasSum, tSum, count, score}, ... }, ... }
+const DAILY_STORAGE_KEY = 'hz_daily_records';
+const MAX_DAYS_STORED = 30; // Maksimum 30 günlük veri tut
+
+function getTodayKey() {
+    return new Date().toISOString().slice(0, 10); // "2025-06-10"
+}
+
+function loadDailyRecords() {
+    try {
+        return JSON.parse(localStorage.getItem(DAILY_STORAGE_KEY) || '{}');
+    } catch(e) { return {}; }
+}
+
+function saveDailyRecords(records) {
+    // 30 günden eski kayıtları temizle
+    const keys = Object.keys(records).sort();
+    while (keys.length > MAX_DAYS_STORED) {
+        delete records[keys.shift()];
+    }
+    localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify(records));
+}
+
+// Her fetch sonrası anlık veriyi günlük birikime ekle
+function accumulateDailyData() {
+    const withData = classData.filter(c => c.hasData && c.pm != null && c.gas != null && c.t != null);
+    if (!withData.length) return;
+
+    const today = getTodayKey();
+    const records = loadDailyRecords();
+    if (!records[today]) records[today] = {};
+
+    withData.forEach(c => {
+        if (!records[today][c.name]) {
+            records[today][c.name] = { pmSum: 0, gasSum: 0, tSum: 0, count: 0, scoreSum: 0 };
+        }
+        const r = records[today][c.name];
+        r.pmSum    += c.pm;
+        r.gasSum   += c.gas;
+        r.tSum     += c.t;
+        r.scoreSum += (c.score || 0);
+        r.count    += 1;
+    });
+
+    saveDailyRecords(records);
+}
+
+// Belirli bir gün için sınıf ortalamalarını hesapla
+function getDayAverages(dayKey) {
+    const records = loadDailyRecords();
+    const day = records[dayKey];
+    if (!day) return [];
+    return Object.entries(day).map(([name, r]) => ({
+        name,
+        pm:    r.count ? (r.pmSum    / r.count) : 0,
+        gas:   r.count ? (r.gasSum   / r.count) : 0,
+        t:     r.count ? (r.tSum     / r.count) : 0,
+        score: r.count ? Math.round(r.scoreSum  / r.count) : 0,
+        count: r.count
+    }));
+}
+
+// Son N günün listesini döndür (bugün dahil)
+function getRecentDayKeys(n = 7) {
+    const records = loadDailyRecords();
+    const today = getTodayKey();
+    const allKeys = Object.keys(records).sort();
+    // Bugün yoksa ekle
+    if (!allKeys.includes(today)) allKeys.push(today);
+    return allKeys.slice(-n);
+}
+
+// Haftalık en temiz sınıfı hesapla (hafta boyunca en yüksek ortalama skora sahip)
+function computeWeeklyChampion() {
+    const days = getRecentDayKeys(7);
+    const totals = {}; // { className: { scoreSum, count } }
+
+    days.forEach(dk => {
+        const avgs = getDayAverages(dk);
+        avgs.forEach(c => {
+            if (!totals[c.name]) totals[c.name] = { scoreSum: 0, count: 0 };
+            totals[c.name].scoreSum += c.score;
+            totals[c.name].count   += 1;
+        });
+    });
+
+    const ranked = Object.entries(totals)
+        .map(([name, t]) => ({ name, avgScore: t.count ? Math.round(t.scoreSum / t.count) : 0 }))
+        .sort((a, b) => b.avgScore - a.avgScore);
+
+    return ranked[0] || null;
+}
+
+// Bugünün saatlik trend verisi (hourlyTrendChart için)
+function getHourlyTrend() {
+    // Birikimli data değil, sessionStorage'da saatlik snapshot tutarız
+    const key = 'hz_hourly_' + getTodayKey();
+    try { return JSON.parse(sessionStorage.getItem(key) || '[]'); } catch(e) { return []; }
+}
+function saveHourlySnapshot() {
+    const withData = classData.filter(c => c.hasData && c.pm != null);
+    if (!withData.length) return;
+    const key = 'hz_hourly_' + getTodayKey();
+    let snapshots;
+    try { snapshots = JSON.parse(sessionStorage.getItem(key) || '[]'); } catch(e) { snapshots = []; }
+    const now = new Date();
+    const label = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    const avgPm = withData.reduce((s, c) => s + c.pm, 0) / withData.length;
+    snapshots.push({ time: label, pm: parseFloat(avgPm.toFixed(2)) });
+    // Son 48 nokta
+    if (snapshots.length > 48) snapshots.shift();
+    sessionStorage.setItem(key, JSON.stringify(snapshots));
+}
+// ========== / GÜNLÜK VERİ KAYIT SİSTEMİ ==========
+
 // Tüm sınıf listesi (cihaz bilgileri backend'den, sensor değerleri boş başlar)
 function generateAllClasses() {
     const classes = [];
@@ -1532,6 +1648,10 @@ async function fetchSensorData() {
             }
         });
 
+        // Günlük birikim & saatlik snapshot kaydet
+        accumulateDailyData();
+        saveHourlySnapshot();
+
         loadLiveTable();
         updateAnalyticsCharts();
         renderSchoolMap();
@@ -1596,20 +1716,19 @@ function initChampionsChart() {
 }
 
 function initAnalyticsCharts() {
-    const emptyOpts = (label) => ({ responsive:true, plugins:{ title:{ display:true, text:'Veri bekleniyor...' } } });
     const emptyData = (label) => ({ labels:[], datasets:[{label, data:[]}] });
 
     const h = document.getElementById('hourlyTrendChart');
-    if (h) { if(hourlyTrendChart) hourlyTrendChart.destroy(); hourlyTrendChart = new Chart(h, {type:'line', data:emptyData('PM2.5'), options:{responsive:true, plugins:{title:{display:true,text:'Veri bekleniyor...'}}} }); }
+    if (h) { if(hourlyTrendChart) hourlyTrendChart.destroy(); hourlyTrendChart = new Chart(h, {type:'line', data:emptyData('Ort. PM2.5'), options:{responsive:true, plugins:{title:{display:true,text:'Bugünkü Saatlik PM2.5 Trendi'}}, scales:{y:{beginAtZero:true,title:{display:true,text:'PM2.5 (µg/m³)'}}}}}); }
 
     const d = document.getElementById('dailyAverageChart');
-    if (d) { if(dailyAvgChart) dailyAvgChart.destroy(); dailyAvgChart = new Chart(d, {type:'bar', data:emptyData('Günlük Ort. PM2.5'), options:{responsive:true, plugins:{title:{display:true,text:'Veri bekleniyor...'}}} }); }
+    if (d) { if(dailyAvgChart) dailyAvgChart.destroy(); dailyAvgChart = new Chart(d, {type:'bar', data:emptyData('Günlük Ort. PM2.5'), options:{responsive:true, plugins:{title:{display:true,text:'Günlük Ortalama PM2.5 (Son 7 Gün)'}}, scales:{y:{beginAtZero:true,title:{display:true,text:'PM2.5 (µg/m³)'}}}}}); }
 
     const w = document.getElementById('weeklyTrendChart');
-    if (w) { if(weeklyTrendChart) weeklyTrendChart.destroy(); weeklyTrendChart = new Chart(w, {type:'line', data:emptyData('Haftalık PM Ort.'), options:{responsive:true, plugins:{title:{display:true,text:'Veri bekleniyor...'}}} }); }
+    if (w) { if(weeklyTrendChart) weeklyTrendChart.destroy(); weeklyTrendChart = new Chart(w, {type:'line', data:emptyData('Haftalık Ort. Puan'), options:{responsive:true, plugins:{title:{display:true,text:'Haftalık Sınıf Puan Trendi (İlk 5)'}}, scales:{y:{min:0,max:100,title:{display:true,text:'Puan (0-100)'}}}}}); }
 
     const p = document.getElementById('pollutantPieChart');
-    if (p) { if(pieChart) pieChart.destroy(); pieChart = new Chart(p, {type:'doughnut', data:{labels:[],datasets:[{data:[],backgroundColor:[]}]}, options:{responsive:true, plugins:{title:{display:true,text:'Veri bekleniyor...'}}} }); }
+    if (p) { if(pieChart) pieChart.destroy(); pieChart = new Chart(p, {type:'doughnut', data:{labels:[],datasets:[{data:[],backgroundColor:[]}]}, options:{responsive:true, plugins:{title:{display:true,text:'Kirlilik Seviyelerine Göre Sınıf Dağılımı'}}}}); }
 
     document.getElementById('dirtiestHour')         && (document.getElementById('dirtiestHour').innerText         = '-');
     document.getElementById('cleanestClassHistory') && (document.getElementById('cleanestClassHistory').innerText = '-');
@@ -1618,16 +1737,112 @@ function initAnalyticsCharts() {
 
 function updateAnalyticsCharts() {
     const withData = classData.filter(c => c.hasData);
-    if (!withData.length) {
-        document.getElementById('weeklyAvgPM')      && (document.getElementById('weeklyAvgPM').innerHTML      = '-');
-        document.getElementById('totalAlarmsCount') && (document.getElementById('totalAlarmsCount').innerText = totalAlarmCount);
-        return;
-    }
-    const avg = (withData.reduce((s,c) => s + c.pm, 0) / withData.length).toFixed(1);
-    document.getElementById('weeklyAvgPM')      && (document.getElementById('weeklyAvgPM').innerHTML      = `${avg} µg/m³`);
     document.getElementById('totalAlarmsCount') && (document.getElementById('totalAlarmsCount').innerText = totalAlarmCount);
-    const best = [...withData].sort((a,b) => b.score - a.score)[0];
-    document.getElementById('cleanestClassHistory') && best && (document.getElementById('cleanestClassHistory').innerText = best.name);
+
+    // --- 1. Saatlik trend (bugün, sessionStorage'dan) ---
+    const hourlySnaps = getHourlyTrend();
+    if (hourlyTrendChart && hourlySnaps.length) {
+        hourlyTrendChart.data.labels   = hourlySnaps.map(s => s.time);
+        hourlyTrendChart.data.datasets[0].data = hourlySnaps.map(s => s.pm);
+        hourlyTrendChart.data.datasets[0].borderColor = '#3b82f6';
+        hourlyTrendChart.data.datasets[0].backgroundColor = 'rgba(59,130,246,0.1)';
+        hourlyTrendChart.data.datasets[0].fill = true;
+        hourlyTrendChart.data.datasets[0].tension = 0.4;
+        hourlyTrendChart.options.plugins.title.text = 'Bugünkü Saatlik PM2.5 Trendi';
+        hourlyTrendChart.update();
+        // En kirli saat
+        const max = hourlySnaps.reduce((a,b) => b.pm > a.pm ? b : a, hourlySnaps[0]);
+        document.getElementById('dirtiestHour') && (document.getElementById('dirtiestHour').innerText = `${max.time} (${max.pm} µg/m³)`);
+    }
+
+    // --- 2. Günlük ortalama bar chart (son 7 gün, localStorage'dan) ---
+    const dayKeys = getRecentDayKeys(7);
+    if (dailyAvgChart && dayKeys.length) {
+        const dayLabels = dayKeys.map(dk => {
+            const d = new Date(dk);
+            return d.toLocaleDateString('tr-TR', { weekday:'short', day:'numeric', month:'short' });
+        });
+        const dayPmAvgs = dayKeys.map(dk => {
+            const avgs = getDayAverages(dk);
+            if (!avgs.length) return null;
+            return parseFloat((avgs.reduce((s,c) => s + c.pm, 0) / avgs.length).toFixed(1));
+        });
+        const barColors = dayPmAvgs.map(v => v == null ? '#94a3b8' : v > 35 ? '#ef4444' : v > 25 ? '#f59e0b' : '#10b981');
+        dailyAvgChart.data.labels   = dayLabels;
+        dailyAvgChart.data.datasets[0].data = dayPmAvgs;
+        dailyAvgChart.data.datasets[0].backgroundColor = barColors;
+        dailyAvgChart.data.datasets[0].borderRadius = 6;
+        dailyAvgChart.update();
+
+        // Haftalık ortalama PM (son 7 gün)
+        const validVals = dayPmAvgs.filter(v => v != null);
+        if (validVals.length) {
+            const wAvg = (validVals.reduce((a,b) => a+b, 0) / validVals.length).toFixed(1);
+            document.getElementById('weeklyAvgPM') && (document.getElementById('weeklyAvgPM').innerHTML = `${wAvg} µg/m³`);
+        }
+    } else if (!withData.length) {
+        document.getElementById('weeklyAvgPM') && (document.getElementById('weeklyAvgPM').innerHTML = '-');
+    }
+
+    // --- 3. Haftalık puan trendi (ilk 5 sınıf, son 7 gün) ---
+    if (weeklyTrendChart && dayKeys.length) {
+        // Tüm günlerden geçen sınıf isimlerini topla, ortalama skorlarına göre sırala
+        const classScoreMap = {};
+        dayKeys.forEach(dk => {
+            getDayAverages(dk).forEach(c => {
+                if (!classScoreMap[c.name]) classScoreMap[c.name] = { total: 0, cnt: 0 };
+                classScoreMap[c.name].total += c.score;
+                classScoreMap[c.name].cnt   += 1;
+            });
+        });
+        // Anlık veri de ekle (bugünkü canlı)
+        withData.forEach(c => {
+            if (!classScoreMap[c.name]) classScoreMap[c.name] = { total: c.score||0, cnt: 1 };
+        });
+        const top5 = Object.entries(classScoreMap)
+            .map(([name, v]) => ({ name, avg: v.cnt ? Math.round(v.total/v.cnt) : 0 }))
+            .sort((a,b) => b.avg - a.avg).slice(0, 5);
+
+        const dayLabels = dayKeys.map(dk => new Date(dk).toLocaleDateString('tr-TR', {weekday:'short', day:'numeric'}));
+        const colors = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444'];
+        weeklyTrendChart.data.labels = dayLabels;
+        weeklyTrendChart.data.datasets = top5.map((cls, i) => ({
+            label: cls.name,
+            data: dayKeys.map(dk => {
+                const avgs = getDayAverages(dk);
+                const found = avgs.find(c => c.name === cls.name);
+                return found ? found.score : null;
+            }),
+            borderColor: colors[i],
+            backgroundColor: colors[i] + '22',
+            borderWidth: 2, fill: false, tension: 0.4, pointRadius: 5, spanGaps: true
+        }));
+        weeklyTrendChart.update();
+    }
+
+    // --- 4. Pasta grafik: PM seviyelerine göre sınıf dağılımı ---
+    if (pieChart && withData.length) {
+        const excellent = withData.filter(c => c.pm <= 12).length;
+        const good      = withData.filter(c => c.pm > 12 && c.pm <= 25).length;
+        const moderate  = withData.filter(c => c.pm > 25 && c.pm <= 35).length;
+        const bad       = withData.filter(c => c.pm > 35).length;
+        pieChart.data.labels   = ['Mükemmel (≤12)', 'İyi (12-25)', 'Orta (25-35)', 'Kötü (>35)'];
+        pieChart.data.datasets = [{
+            data: [excellent, good, moderate, bad],
+            backgroundColor: ['#10b981','#3b82f6','#f59e0b','#ef4444'],
+            borderWidth: 2
+        }];
+        pieChart.update();
+    }
+
+    // --- 5. Haftalık şampiyon (en temiz sınıf - 7 günlük ortalama) ---
+    const weekChamp = computeWeeklyChampion();
+    if (weekChamp) {
+        document.getElementById('cleanestClassHistory') && (document.getElementById('cleanestClassHistory').innerText = `${weekChamp.name} (Ort. ${weekChamp.avgScore} puan)`);
+    } else if (withData.length) {
+        const best = [...withData].sort((a,b) => b.score - a.score)[0];
+        document.getElementById('cleanestClassHistory') && best && (document.getElementById('cleanestClassHistory').innerText = best.name);
+    }
 }
 
 function applyDarkMode(isDark) {
@@ -1681,7 +1896,66 @@ function initApp() {
 
         async function generateWeeklyPDF() {
             if (typeof classData === 'undefined') return;
-            // ... (Haftalık PDF kodların buraya gelecek, Daily ile aynı mantıkta hata kontrolleri ekle)
+            const now = new Date();
+            const ds = now.toLocaleDateString('tr-TR');
+            const dayKeys = getRecentDayKeys(7);
+
+            // Her gün için tüm sınıf ortalamalarını topla
+            const classWeekly = {};
+            dayKeys.forEach(dk => {
+                getDayAverages(dk).forEach(c => {
+                    if (!classWeekly[c.name]) classWeekly[c.name] = { pmSum: 0, gasSum: 0, scoreSum: 0, count: 0 };
+                    classWeekly[c.name].pmSum    += c.pm;
+                    classWeekly[c.name].gasSum   += c.gas;
+                    classWeekly[c.name].scoreSum += c.score;
+                    classWeekly[c.name].count    += 1;
+                });
+            });
+
+            // Anlık veri de varsa ekle
+            classData.filter(c => c.hasData && c.pm != null).forEach(c => {
+                if (!classWeekly[c.name]) classWeekly[c.name] = { pmSum: c.pm, gasSum: c.gas||0, scoreSum: c.score||0, count: 1 };
+            });
+
+            const rankedList = Object.entries(classWeekly)
+                .map(([name, v]) => ({
+                    name,
+                    pm:    parseFloat((v.pmSum    / v.count).toFixed(1)),
+                    gas:   parseFloat((v.gasSum   / v.count).toFixed(0)),
+                    score: Math.round(v.scoreSum  / v.count),
+                    days:  v.count
+                }))
+                .sort((a, b) => b.score - a.score);
+
+            if (!rankedList.length) return alert('Haftalık veri bulunamadı! Sistemin en az 1 gün çalışmış olması gerekiyor.');
+
+            const champ = computeWeeklyChampion();
+            const worst = rankedList[rankedList.length - 1];
+            const avgPM = parseFloat((rankedList.reduce((s, c) => s + c.pm, 0) / rankedList.length).toFixed(1));
+
+            const rows = rankedList.slice(0, 20).map((c, i) =>
+                `<tr><td>${i+1}</td><td>${c.name}</td><td>${c.pm}</td><td>${c.gas}</td><td><strong>${c.score}</strong></td><td>${c.days} gün</td></tr>`
+            ).join('');
+
+            const div = document.createElement('div');
+            div.className = 'pdf-report-container';
+            div.innerHTML = `
+                <div class="pdf-header"><h1>📊 HAREZMİ IoT - Haftalık Rapor</h1><p>Rapor Tarihi: ${ds} | Son 7 Gün</p></div>
+                <div class="pdf-stats">
+                    <div class="pdf-stat-card"><h3>🏆 Haftalık Şampiyon</h3><h2>${champ?.name || rankedList[0].name}</h2><p>Ort. Puan: ${champ?.avgScore || rankedList[0].score}</p></div>
+                    <div class="pdf-stat-card"><h3>💨 Haftalık Ort. PM2.5</h3><h2>${avgPM}</h2><p>µg/m³</p></div>
+                    <div class="pdf-stat-card"><h3>⚠️ En Kötü Sınıf</h3><h2>${worst.name}</h2><p>Ort. Puan: ${worst.score}</p></div>
+                    <div class="pdf-stat-card"><h3>📅 Analiz Süresi</h3><h2>${dayKeys.length} Gün</h2><p>${dayKeys[0]} – ${dayKeys[dayKeys.length-1]}</p></div>
+                </div>
+                <div class="pdf-subtitle">Haftalık Sınıf Sıralaması (Ortalama Puana Göre)</div>
+                <table class="pdf-table"><thead><tr><th>#</th><th>Sınıf</th><th>Ort. PM2.5</th><th>Ort. Gaz</th><th>Ort. Puan</th><th>Veri</th></tr></thead><tbody>${rows}</tbody></table>
+                <div class="pdf-footer"><p>Harezmi IoT Akıllı Okul Hava Yönetim Sistemi | © 2025 Harezmi IoT</p></div>`;
+            document.body.appendChild(div);
+            if (typeof html2pdf !== 'undefined') {
+                const week = `${dayKeys[0]}_${dayKeys[dayKeys.length-1]}`.replace(/\./g,'-');
+                await html2pdf().set({ margin:[0.5,0.5,0.5,0.5], filename:`Harezmi_Haftalik_${week}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true}, jsPDF:{unit:'in',format:'a4',orientation:'portrait'} }).from(div).save();
+            }
+            document.body.removeChild(div);
         }
 
         function toggleMobileMenu() { 
