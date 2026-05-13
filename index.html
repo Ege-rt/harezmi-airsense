@@ -1051,28 +1051,84 @@ let weeklyChart, hourlyTrendChart, dailyAvgChart, weeklyTrendChart, pieChart;
 // Backend URL - aynı sunucudan serve edildiği için relative path
 const BACKEND_URL = '';
 
-// ========== GÜNLÜK VERİ KAYIT SİSTEMİ ==========
-// localStorage'da tutulur: { "2025-06-10": { "9-A": {pmSum, gasSum, tSum, count, score}, ... }, ... }
+// ========== GÜNLÜK VERİ KAYIT SİSTEMİ (MongoDB destekli - cihazlar arası) ==========
+// _dailyCache: MongoDB'den çekilen verinin RAM kopyası
+// localStorage: sadece bugünkü anlık birikim (henüz backend'e yazılmamış ölçümler)
 const DAILY_STORAGE_KEY = 'hz_daily_records';
-const MAX_DAYS_STORED = 30; // Maksimum 30 günlük veri tut
+const MAX_DAYS_STORED   = 90;
+
+let _dailyCache      = null; // MongoDB'den çekilen geçmiş veriler
+let _dailyCacheTime  = 0;    // Son çekim zamanı (ms)
+const CACHE_TTL_MS   = 5 * 60 * 1000; // 5 dakika önbellek
 
 function getTodayKey() {
-    return new Date().toISOString().slice(0, 10); // "2025-06-10"
+    return new Date().toISOString().slice(0, 10);
 }
 
-function loadDailyRecords() {
+// MongoDB'den günlük history'yi çek (5 dk önbellek)
+async function fetchDailyFromBackend(days = 90) {
+    const now = Date.now();
+    if (_dailyCache && (now - _dailyCacheTime) < CACHE_TTL_MS) return _dailyCache;
+
     try {
-        return JSON.parse(localStorage.getItem(DAILY_STORAGE_KEY) || '{}');
+        const res = await fetch(`${BACKEND_URL}/api/history/daily?days=${days}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        _dailyCache     = data;
+        _dailyCacheTime = now;
+        return data;
+    } catch(e) {
+        console.warn('Geçmiş verisi alınamadı, localStorage\'a düşüldü:', e.message);
+        return null;
+    }
+}
+
+// Bugün için localStorage'daki anlık birikimi yükle
+function loadLocalToday() {
+    try {
+        const all = JSON.parse(localStorage.getItem(DAILY_STORAGE_KEY) || '{}');
+        return all[getTodayKey()] || {};
     } catch(e) { return {}; }
 }
 
-function saveDailyRecords(records) {
-    // 30 günden eski kayıtları temizle
-    const keys = Object.keys(records).sort();
-    while (keys.length > MAX_DAYS_STORED) {
-        delete records[keys.shift()];
+// Geçmiş + bugünkü anlık birleşik kayıtlar
+function loadDailyRecords() {
+    const base = _dailyCache ? { ..._dailyCache } : {};
+    // Bugünün anlık verisini (localStorage) MongoDB verisinin üstüne birleştir
+    const today = getTodayKey();
+    const localToday = loadLocalToday();
+    if (Object.keys(localToday).length) {
+        if (!base[today]) base[today] = {};
+        Object.entries(localToday).forEach(([cls, r]) => {
+            if (!base[today][cls]) {
+                base[today][cls] = { ...r };
+            } else {
+                // Aynı ölçümleri çift saymamak için: MongoDB yoksa ekle, varsa MongoDB'yi kullan
+                // (MongoDB zaten en güncel birleşimi tutuyor, localToday ek verisi)
+                const b = base[today][cls];
+                b.pmSum    += r.pmSum;
+                b.gasSum   += r.gasSum;
+                b.tSum     += r.tSum;
+                b.scoreSum += r.scoreSum;
+                b.count    += r.count;
+            }
+        });
     }
-    localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify(records));
+    return base;
+}
+
+function saveDailyRecords(records) {
+    // Sadece bugünü localStorage'a kaydet
+    const today = getTodayKey();
+    const todayData = records[today];
+    if (!todayData) return;
+    let existing = {};
+    try { existing = JSON.parse(localStorage.getItem(DAILY_STORAGE_KEY) || '{}'); } catch(e) {}
+    existing[today] = todayData;
+    // 30 günden fazlasını temizle
+    const keys = Object.keys(existing).sort();
+    while (keys.length > 30) delete existing[keys.shift()];
+    localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify(existing));
 }
 
 // Her fetch sonrası anlık veriyi günlük birikime ekle
@@ -1081,14 +1137,15 @@ function accumulateDailyData() {
     if (!withData.length) return;
 
     const today = getTodayKey();
-    const records = loadDailyRecords();
-    if (!records[today]) records[today] = {};
+    let existing = {};
+    try { existing = JSON.parse(localStorage.getItem(DAILY_STORAGE_KEY) || '{}'); } catch(e) {}
+    if (!existing[today]) existing[today] = {};
 
     withData.forEach(c => {
-        if (!records[today][c.name]) {
-            records[today][c.name] = { pmSum: 0, gasSum: 0, tSum: 0, count: 0, scoreSum: 0 };
+        if (!existing[today][c.name]) {
+            existing[today][c.name] = { pmSum: 0, gasSum: 0, tSum: 0, count: 0, scoreSum: 0 };
         }
-        const r = records[today][c.name];
+        const r = existing[today][c.name];
         r.pmSum    += c.pm;
         r.gasSum   += c.gas;
         r.tSum     += c.t;
@@ -1096,7 +1153,10 @@ function accumulateDailyData() {
         r.count    += 1;
     });
 
-    saveDailyRecords(records);
+    // Eski günleri temizle
+    const keys = Object.keys(existing).sort();
+    while (keys.length > 30) delete existing[keys.shift()];
+    localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify(existing));
 }
 
 // Belirli bir gün için sınıf ortalamalarını hesapla
@@ -1981,6 +2041,15 @@ function initApp() {
     loadLiveTable(); updateStats(); initChampionsChart(); initAnalyticsCharts(); renderSchoolMap();
     startDataFetch(5); loadDarkModePreference(); loadRememberMeState();
     const rs = document.getElementById('roleSelect'); if (rs) rs.value = currentUserRole;
+
+    // MongoDB'den geçmiş verileri arka planda çek (cihazlar arası senkronizasyon)
+    fetchDailyFromBackend(90).then(data => {
+        if (data) {
+            console.log('Gecmis veriler MongoDB den yuklendi:', Object.keys(data).length, 'gun');
+            updateAnalyticsCharts();
+            if (document.getElementById('history')?.classList.contains('active')) initHistoryPage();
+        }
+    });
 }
 
 // --- PDF Üretme Fonksiyonları ---
@@ -2185,6 +2254,13 @@ function histSetView(view, el) {
 }
 
 function initHistoryPage() {
+    // Önce önbelleği geçersiz kıl ve MongoDB'den taze veri çek
+    _dailyCacheTime = 0;
+    fetchDailyFromBackend(90).then(() => _renderHistoryPage());
+    _renderHistoryPage(); // Önbellekteki veriyle anında render et
+}
+
+function _renderHistoryPage() {
     const { dayKeys, byMonth, byWeek } = groupRecords();
     const records = loadDailyRecords();
 
