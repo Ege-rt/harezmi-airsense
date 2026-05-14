@@ -1127,7 +1127,7 @@
             <div class="card" style="max-width:600px">
                 <div class="form-group"><label>Wi-Fi SSID</label><input type="text" id="wifiSSID" value="Harezmi_Lab_WiFi"></div>
                 <div class="form-group"><label>Fan Eşik Değeri (PM2.5)</label><input type="number" id="fanThreshold" value="25"><small>Bu değerin üzerinde fan otomatik açılır</small></div>
-                <div class="form-group"><label>Kritik Gaz Seviyesi (PPM)</label><input type="number" id="gasThreshold" value="400"></div>
+                <div class="form-group"><label>Kritik Gaz Seviyesi (PPM)</label><input type="number" id="gasThreshold" value="800"></div>
                 <div class="form-group"><label>Ölçüm Sıklığı (saniye)</label><input type="number" id="measureInterval" value="5"></div>
                 <div class="form-group"><label>Sesli Alarm</label><select id="soundAlarm"><option value="on">Açık</option><option value="off">Kapalı</option></select></div>
                 <div class="form-group"><label>🔔 Tarayıcı Bildirimleri</label><button onclick="requestNotifPermission()" style="padding:10px 20px;background:var(--accent);color:white;border:none;border-radius:8px;cursor:pointer;font-family:'Sora',sans-serif;font-weight:600"><i class="fas fa-bell"></i> Bildirimlere İzin Ver</button><small style="display:block;margin-top:6px;color:var(--text-secondary)" id="notifPermStatus">Durum: bilinmiyor</small></div>
@@ -1153,7 +1153,7 @@ const SESSION_DURATION = 30 * 60 * 1000;
 const SESSION_WARNING = 25 * 60 * 1000;
 let classData = [], currentFilter = 'all';
 let totalAlarmCount = 0, fetchInterval;
-let fanThresholdValue = 25, gasThresholdValue = 400;
+let fanThresholdValue = 25, gasThresholdValue = 800;
 let weeklyChart, hourlyTrendChart, dailyAvgChart, weeklyTrendChart, pieChart;
 
 // Backend URL - aynı sunucudan serve edildiği için relative path
@@ -1575,8 +1575,9 @@ function renderUsersTable() {
 // (generateAllClasses yukarıda tanımlandı)
 
 function getAIDecision(pm, gas, temp) {
-    if (pm>40||gas>500) return {text:"🚨 ACİL: Sınıf boşaltılmalı!",color:"#ef4444"};
-    if (pm>30||gas>400) return {text:"⚠️ KRİTİK: Fan açılmalı!",color:"#f59e0b"};
+    if (pm>40||gas>1200) return {text:"🚨 Riskli: Gaz kritik seviyede!",color:"#ef4444"};
+    if (pm>30||gas>800)  return {text:"⚠️ Riskli: Havalandırma gerekli!",color:"#f59e0b"};
+    if (pm>25||gas>600)  return {text:"🔶 Riskli: Gaz orta seviyede",color:"#f97316"};
     if (pm>25) return {text:"🔄 Dikkat: Havalandırma önerilir",color:"#f59e0b"};
     if (pm>15) return {text:"✅ İyi: Normal seviyede",color:"#10b981"};
     if (temp>28) return {text:"🌡️ Sıcak: Fan çalıştırılabilir",color:"#3b82f6"};
@@ -1686,7 +1687,7 @@ function loadLiveTable() {
             lsText = diff < 60 ? `${diff} sn önce` : `${Math.floor(diff/60)} dk önce`;
         }
         const pmColor  = c.pm  != null ? (c.pm  > 25 ? '#ef4444' : '#10b981') : 'var(--text-secondary)';
-        const gasColor = c.gas != null ? (c.gas > 400 ? '#ef4444' : '#f59e0b') : 'var(--text-secondary)';
+        const gasColor = c.gas != null ? (c.gas > 800 ? '#ef4444' : c.gas > 600 ? '#f97316' : '#f59e0b') : 'var(--text-secondary)';
         return `<tr>
             <td><b>${c.name}</b></td>
             <td><small>${c.deviceId}</small></td>
@@ -1806,7 +1807,7 @@ function renderSchoolMap() {
     filtered.sort((a,b) => a.grade !== b.grade ? a.grade - b.grade : a.name.localeCompare(b.name));
     map.innerHTML = filtered.map(c => {
         const st = !c.hasData ? 'clean'
-            : (c.pm > 35 || c.gas > 500 ? 'critical' : c.pm > 20 || c.gas > 300 ? 'moderate' : 'clean');
+            : (c.pm > 35 || c.gas > 1200 ? 'critical' : c.pm > 20 || c.gas > 600 ? 'moderate' : 'clean');
         const fi = ['🏢','🏠','🏬','🏛️'][c.floorNum] || '🏢';
         const ai = c.hasData ? getAIDecision(c.pm, c.gas, c.t) : {text: 'Veri bekleniyor...', color:'var(--text-secondary)'};
         const pmColor = c.pm != null ? (c.pm > 25 ? '#ef4444' : '#10b981') : 'var(--text-secondary)';
@@ -2661,7 +2662,7 @@ function renderHistWeekClassTable() {
     const tdS = 'padding:10px 12px;border-bottom:1px solid var(--border);font-size:0.85rem;';
     tbody.innerHTML = ranked.map((c, i) => {
         const pmColor  = c.pm > 35 ? '#ef4444' : c.pm > 25 ? '#f59e0b' : '#10b981';
-        const gasColor = c.gas > 400 ? '#ef4444' : c.gas > 300 ? '#f59e0b' : 'var(--text-primary)';
+        const gasColor = c.gas > 800 ? '#ef4444' : c.gas > 600 ? '#f97316' : c.gas > 400 ? '#f59e0b' : 'var(--text-primary)';
         const status   = c.pm > 35 ? '🔴 Kötü' : c.pm > 25 ? '🟠 Orta' : c.pm > 12 ? '🟢 İyi' : '✨ Mükemmel';
         const medal    = i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `${i+1}.`;
         const scoreColor = c.score >= 80 ? '#10b981' : c.score >= 60 ? '#f59e0b' : '#ef4444';
@@ -2766,19 +2767,23 @@ function clearNotifs() {
 function checkAlarms() {
     const withData = classData.filter(c => c.hasData);
     withData.forEach(c => {
-        const isCritical = c.pm > 40 || c.gas > 500;
-        const isWarning  = !isCritical && (c.pm > 30 || c.gas > 400);
+        const isCritical = c.pm > 40 || c.gas > 1200;
+        const isWarning  = !isCritical && (c.pm > 30 || c.gas > 800);
+        const isModerate = !isCritical && !isWarning && (c.pm > 25 || c.gas > 600);
         const wasAlerted = lastAlarmState[c.name];
 
         if (isCritical && !wasAlerted) {
-            addNotif('critical', `🚨 KRİTİK: ${c.name}`, `PM2.5: ${c.pm?.toFixed(1)} µg/m³ | Gaz: ${c.gas?.toFixed(0)} PPM — Sınıf boşaltılmalı!`);
+            addNotif('critical', `🚨 RİSKLİ: ${c.name}`, `PM2.5: ${c.pm?.toFixed(1)} µg/m³ | Gaz: ${c.gas?.toFixed(0)} PPM — Gaz kritik seviyede!`);
             sendBrowserNotif(`🚨 Kritik Hava Kalitesi — ${c.name}`, `PM: ${c.pm?.toFixed(1)} | Gaz: ${c.gas?.toFixed(0)} PPM`);
             totalAlarmCount++;
             lastAlarmState[c.name] = true;
         } else if (isWarning && !wasAlerted) {
-            addNotif('warning', `⚠️ UYARI: ${c.name}`, `PM2.5: ${c.pm?.toFixed(1)} µg/m³ | Gaz: ${c.gas?.toFixed(0)} PPM — Havalandırma önerilir`);
+            addNotif('warning', `⚠️ RİSKLİ: ${c.name}`, `PM2.5: ${c.pm?.toFixed(1)} µg/m³ | Gaz: ${c.gas?.toFixed(0)} PPM — Havalandırma gerekli`);
             lastAlarmState[c.name] = true;
-        } else if (!isCritical && !isWarning) {
+        } else if (isModerate && !wasAlerted) {
+            addNotif('warning', `🔶 RİSKLİ: ${c.name}`, `PM2.5: ${c.pm?.toFixed(1)} µg/m³ | Gaz: ${c.gas?.toFixed(0)} PPM — Gaz orta seviyede`);
+            lastAlarmState[c.name] = true;
+        } else if (!isCritical && !isWarning && !isModerate) {
             lastAlarmState[c.name] = false;
         }
     });
@@ -2970,7 +2975,7 @@ function renderFanStats() {
             const reason = c.fanState
                 ? (c.fanManual ? '🔒 Manuel açık'
                     : c.pm > 25 ? `💨 PM2.5 yüksek (${c.pm?.toFixed(1)})`
-                    : c.gas > 400 ? `🧪 Gaz yüksek (${c.gas?.toFixed(0)} PPM)`
+                    : c.gas > 600 ? `🧪 Gaz yüksek (${c.gas?.toFixed(0)} PPM)`
                     : '⚙️ Otomatik')
                 : (c.fanManual ? '🔒 Manuel kapalı' : '✅ Gerekmiyor');
             return `<tr>
@@ -2978,7 +2983,7 @@ function renderFanStats() {
                 <td><span style="color:${c.fanState?'#10b981':'#64748b'};font-weight:700">${c.fanState?'🟢 Çalışıyor':'⚫ Durdu'}</span></td>
                 <td>${c.fanManual?'<span style="color:#f59e0b">🔒 Evet</span>':'—'}</td>
                 <td style="color:${c.pm>25?'#ef4444':'#10b981'}">${c.pm?.toFixed(1) ?? '—'} µg/m³</td>
-                <td style="color:${c.gas>400?'#ef4444':'var(--text-primary)'}">${c.gas?.toFixed(0) ?? '—'} PPM</td>
+                <td style="color:${c.gas>800?'#ef4444':c.gas>600?'#f97316':'var(--text-primary)'}">${c.gas?.toFixed(0) ?? '—'} PPM</td>
                 <td style="font-size:0.82rem;color:var(--text-secondary)">${reason}</td>
             </tr>`;
         }).join('') || '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-secondary)">Veri bekleniyor...</td></tr>';
