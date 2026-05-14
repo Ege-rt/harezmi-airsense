@@ -2181,7 +2181,8 @@ function initApp() {
             
             const rows=sorted.slice(0,20).map(c=>{
                 const ai = (typeof getAIDecision === 'function') ? getAIDecision(c.pm,c.gas,c.t) : {text: 'N/A'};
-                return `<tr style="vertical-align:middle"><td style="vertical-align:middle">${c.name}</td><td style="vertical-align:middle">${c.deviceId}</td><td style="vertical-align:middle">${c.online?'Çevrimiçi':'Çevrimdışı'}</td><td style="vertical-align:middle">${fmtVal(c.t,1,'°C')}</td><td style="vertical-align:middle">${fmtVal(c.pm,1)}</td><td style="vertical-align:middle">${fmtVal(c.gas,0)}</td><td style="vertical-align:middle">${ai.text}</td><td style="vertical-align:middle"><strong>${c.score}</strong></td></tr>`;
+                const aiText = ai.text.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+                return `<tr><td>${c.name}</td><td>${c.deviceId}</td><td>${c.online?'Çevrimiçi':'Çevrimdışı'}</td><td>${fmtVal(c.t,1,'°C')}</td><td>${fmtVal(c.pm,1)}</td><td>${fmtVal(c.gas,0)}</td><td>${aiText}</td><td><strong>${c.score}</strong></td></tr>`;
             }).join('');
 
             const div=document.createElement('div');
