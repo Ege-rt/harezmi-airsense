@@ -32,6 +32,7 @@ let client;
 let db;
 let sensorCollection;
 let historyCollection;
+let fanStatesCollection;
 
 let isConnected = false;
 let isConnecting = false;
@@ -85,7 +86,8 @@ async function connectMongo() {
 
         db = client.db(DB_NAME);
         sensorCollection = db.collection("sensors");
-        historyCollection = db.collection("history");
+        historyCollection   = db.collection("history");
+        fanStatesCollection = db.collection("fan_states");
 
         await createIndexes();
 
@@ -249,6 +251,41 @@ app.get("/api/fan-command", (req, res) => {
     const { deviceId } = req.query;
     if (!deviceId) return res.status(400).json({ error: "deviceId required" });
     res.json({ fanOverride: fanCommands[deviceId] ?? null });
+});
+
+// ─────────────────────────────────────────────
+// API: FAN STATES (Manuel açma/kapama kalıcı kayıt)
+// GET  /api/fan-states       → Tüm fan durumlarını getir
+// POST /api/fan-states       → Fan durumlarını kaydet (upsert)
+// ─────────────────────────────────────────────
+app.get("/api/fan-states", async (req, res) => {
+    try {
+        const doc = await fanStatesCollection.findOne({ _id: "global" });
+        if (!doc) return res.json({ states: {}, savedAt: null });
+        res.json({ states: doc.states || {}, savedAt: doc.savedAt || null });
+    } catch (err) {
+        console.error("fan-states GET hatası:", err.message);
+        res.status(500).json({ error: "DB error" });
+    }
+});
+
+app.post("/api/fan-states", async (req, res) => {
+    const { states, savedAt } = req.body;
+    if (!states || typeof states !== "object") {
+        return res.status(400).json({ error: "Geçersiz veri" });
+    }
+    try {
+        await fanStatesCollection.updateOne(
+            { _id: "global" },
+            { $set: { states, savedAt: savedAt || new Date().toISOString() } },
+            { upsert: true }
+        );
+        console.log("💾 Fan durumları kaydedildi:", Object.keys(states).length, "sınıf");
+        res.json({ success: true });
+    } catch (err) {
+        console.error("fan-states POST hatası:", err.message);
+        res.status(500).json({ error: "DB error" });
+    }
 });
 
 // ─────────────────────────────────────────────
