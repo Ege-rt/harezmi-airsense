@@ -2167,98 +2167,308 @@ function initApp() {
     registerPWA();
 }
 
-// --- PDF Üretme Fonksiyonları ---
-        async function generateDailyPDF() {
-            if (typeof classData === 'undefined') return alert("Veri henüz yüklenmedi!");
-            const withData = classData.filter(c => c.hasData);
-            if (!withData.length) return alert("Henüz backend'den veri gelmedi!");
+// ═══════════════════════════════════════════════════════════════
+// PDF Rapor Sistemi — Profesyonel Tasarım
+// ═══════════════════════════════════════════════════════════════
 
-            const now=new Date(),ds=now.toLocaleDateString('tr-TR'),ts=now.toLocaleTimeString('tr-TR');
-            const avg=(withData.reduce((s,c)=>s+c.pm,0)/withData.length).toFixed(1);
-            const sorted=[...withData].sort((a,b)=>b.score-a.score);
-            const best=sorted[0], worst=sorted[sorted.length-1];
-            const online=classData.filter(c=>c.online).length;
-            
-            const rows=sorted.slice(0,20).map(c=>{
-                const ai = (typeof getAIDecision === 'function') ? getAIDecision(c.pm,c.gas,c.t) : {text: 'N/A'};
-                const aiText = ai.text.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
-                return `<tr><td>${c.name}</td><td>${c.deviceId}</td><td>${c.online?'Çevrimiçi':'Çevrimdışı'}</td><td>${fmtVal(c.t,1,'°C')}</td><td>${fmtVal(c.pm,1)}</td><td>${fmtVal(c.gas,0)}</td><td>${aiText}</td><td><strong>${c.score}</strong></td></tr>`;
-            }).join('');
+// ─── PM2.5 değerine göre renk/durum bilgisi ──────────────────
+function _pdfPmStyle(pm) {
+    if (pm == null) return { color:'#64748b', bg:'#f1f5f9', border:'#e2e8f0', label:'Veri Yok', dot:'#94a3b8' };
+    if (pm <= 12)   return { color:'#0f766e', bg:'#ccfbf1', border:'#99f6e4', label:'Mükemmel', dot:'#14b8a6' };
+    if (pm <= 25)   return { color:'#15803d', bg:'#dcfce7', border:'#bbf7d0', label:'İyi',      dot:'#22c55e' };
+    if (pm <= 35)   return { color:'#92400e', bg:'#fef3c7', border:'#fde68a', label:'Orta',     dot:'#f59e0b' };
+    return              { color:'#b91c1c', bg:'#fee2e2', border:'#fecaca', label:'Kötü',     dot:'#ef4444' };
+}
 
-            const div=document.createElement('div');
-            div.className='pdf-report-container';
-            div.innerHTML=`<div class="pdf-header"><h1>📊 HAREZMİ IoT - Günlük Rapor</h1><p>Tarih: ${ds} | Saat: ${ts}</p></div><div class="pdf-stats"><div class="pdf-stat-card"><h3>En İyi Sınıf</h3><h2>${best.name}</h2><p>Puan: ${best.score}</p></div><div class="pdf-stat-card"><h3>Ort. PM2.5</h3><h2>${avg}</h2><p>µg/m³</p></div><div class="pdf-stat-card"><h3>Kritik Sınıf</h3><h2>${worst.name}</h2><p>Puan: ${worst.score}</p></div><div class="pdf-stat-card"><h3>Cihaz</h3><h2>${online}/${classData.length}</h2><p>Aktif/Toplam</p></div></div><div class="pdf-subtitle">Sınıf Detayları (İlk 20)</div><table class="pdf-table"><thead><tr><th>Sınıf</th><th>Cihaz ID</th><th>Durum</th><th>Sıcaklık</th><th>PM2.5</th><th>Gaz</th><th>AI Karar</th><th>Puan</th></tr></thead><tbody>${rows}</tbody></table><div class="pdf-footer"><p>Harezmi IoT Akıllı Okul Hava Yönetim Sistemi | © 2025 Harezmi IoT</p></div>`;
-            document.body.appendChild(div);
-            
-            if (typeof html2pdf !== 'undefined') {
-                await html2pdf().set({margin:[0.5,0.5,0.5,0.5],filename:`Harezmi_Gunluk_${ds.replace(/\./g,'-')}.pdf`,image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'in',format:'a4',orientation:'portrait'}}).from(div).save();
-            }
-            document.body.removeChild(div);
-        }
+// ─── Puan çubuğu (PM rengiyle) ───────────────────────────────
+function _pdfScoreBar(score, pm) {
+    const s = _pdfPmStyle(pm);
+    const pct = Math.max(4, Math.min(100, score || 0));
+    return `<div style="display:flex;align-items:center;gap:8px">
+        <span style="font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#0f172a;min-width:28px">${score ?? '-'}</span>
+        <div style="flex:1;height:5px;background:#e2e8f0;border-radius:3px;overflow:hidden;min-width:60px">
+            <div style="height:100%;width:${pct}%;background:${s.dot};border-radius:3px"></div>
+        </div>
+    </div>`;
+}
 
-        async function generateWeeklyPDF() {
-            if (typeof classData === 'undefined') return;
-            const now = new Date();
-            const ds = now.toLocaleDateString('tr-TR');
-            const dayKeys = getRecentDayKeys(7);
+// ─── Durum pill ───────────────────────────────────────────────
+function _pdfStatusPill(pm) {
+    const s = _pdfPmStyle(pm);
+    return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;background:${s.bg};border:1px solid ${s.border};font-size:11px;font-weight:600;color:${s.color}">
+        <span style="width:6px;height:6px;border-radius:50%;background:${s.dot}"></span>${s.label}
+    </span>`;
+}
 
-            // Her gün için tüm sınıf ortalamalarını topla
-            const classWeekly = {};
-            dayKeys.forEach(dk => {
-                getDayAverages(dk).forEach(c => {
-                    if (!classWeekly[c.name]) classWeekly[c.name] = { pmSum: 0, gasSum: 0, scoreSum: 0, count: 0 };
-                    classWeekly[c.name].pmSum    += c.pm;
-                    classWeekly[c.name].gasSum   += c.gas;
-                    classWeekly[c.name].scoreSum += c.score;
-                    classWeekly[c.name].count    += 1;
-                });
-            });
+// ─── Sıra numarası rengi ──────────────────────────────────────
+function _pdfRankColor(i) {
+    return i === 0 ? '#b45309' : i === 1 ? '#6b7280' : i === 2 ? '#78350f' : '#94a3b8';
+}
 
-            // Anlık veri de varsa ekle
-            classData.filter(c => c.hasData && c.pm != null).forEach(c => {
-                if (!classWeekly[c.name]) classWeekly[c.name] = { pmSum: c.pm, gasSum: c.gas||0, scoreSum: c.score||0, count: 1 };
-            });
+// ─── Ortak özet kart HTML ─────────────────────────────────────
+function _pdfSummaryCard(label, value, sub, dotColor) {
+    const dot = dotColor ? `<span style="position:absolute;top:18px;right:18px;width:8px;height:8px;border-radius:50%;background:${dotColor}"></span>` : '';
+    const valSize = String(value).length > 8 ? '17px' : '26px';
+    const valFont = String(value).length > 8 ? "'DM Sans','Sora',sans-serif" : "'Courier New',monospace";
+    return `<div style="padding:20px 24px;border-right:1px solid #e2e8f0;position:relative">
+        ${dot}
+        <div style="font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#94a3b8;margin-bottom:8px">${label}</div>
+        <div style="font-size:${valSize};font-weight:700;color:#0f172a;line-height:1;font-family:${valFont}">${value}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:5px;font-family:sans-serif">${sub}</div>
+    </div>`;
+}
 
-            const rankedList = Object.entries(classWeekly)
-                .map(([name, v]) => ({
-                    name,
-                    pm:    parseFloat((v.pmSum    / v.count).toFixed(1)),
-                    gas:   parseFloat((v.gasSum   / v.count).toFixed(0)),
-                    score: Math.round(v.scoreSum  / v.count),
-                    days:  v.count
-                }))
-                .sort((a, b) => b.score - a.score);
+// ─── Ortak tablo başlık hücresi ───────────────────────────────
+function _pdfTh(text, align) {
+    return `<th style="padding:10px 14px;text-align:${align||'left'};font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0">${text}</th>`;
+}
 
-            if (!rankedList.length) return alert('Haftalık veri bulunamadı! Sistemin en az 1 gün çalışmış olması gerekiyor.');
+// ─── Ortak efsane HTML'i ──────────────────────────────────────
+const _pdfLegend = `
+    <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b"><span style="width:8px;height:8px;border-radius:50%;background:#14b8a6"></span>≤12 Mükemmel</span>
+    <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e"></span>13–25 İyi</span>
+    <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b"></span>26–35 Orta</span>
+    <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b"><span style="width:8px;height:8px;border-radius:50%;background:#ef4444"></span>>35 Kötü</span>`;
 
-            const champ = computeWeeklyChampion();
-            const worst = rankedList[rankedList.length - 1];
-            const avgPM = parseFloat((rankedList.reduce((s, c) => s + c.pm, 0) / rankedList.length).toFixed(1));
+// ─── Ortak sayfa HTML şablonu ─────────────────────────────────
+function _pdfBuildPage({ title, subtitle, dateStr, rangeStr, cards, tableHead, tableBody }) {
+    return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Sora','Segoe UI',Arial,sans-serif;background:#ffffff;color:#0f172a;max-width:1060px;margin:0 auto">
+        <!-- HEADER -->
+        <div style="background:#0f172a;padding:28px 40px 24px;display:flex;justify-content:space-between;align-items:flex-end">
+            <div>
+                <div style="font-size:10px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#64748b;margin-bottom:6px">Harezmi IoT · Akıllı Okul Sistemi</div>
+                <div style="font-size:22px;font-weight:700;color:#f8fafc;letter-spacing:-0.5px">${title}</div>
+            </div>
+            <div style="text-align:right">
+                <div style="font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#475569;margin-bottom:4px">${subtitle}</div>
+                <div style="font-size:16px;font-weight:700;color:#e2e8f0;font-family:'Courier New',monospace">${dateStr}</div>
+                <div style="font-size:11px;color:#475569;margin-top:2px">${rangeStr}</div>
+            </div>
+        </div>
+        <!-- ÖZET KARTLAR -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #e2e8f0">
+            ${cards}
+        </div>
+        <!-- EFSANE -->
+        <div style="padding:10px 40px;display:flex;align-items:center;gap:16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;flex-wrap:wrap">
+            <span style="font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#94a3b8;margin-right:4px">PM2.5 Eşikleri:</span>
+            ${_pdfLegend}
+        </div>
+        <!-- BÖLÜM BAŞLIĞI -->
+        <div style="padding:12px 40px;background:#f8fafc;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;gap:10px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#475569">Sınıf Sıralaması — Puana Göre</span>
+            <div style="flex:1;height:1px;background:#e2e8f0"></div>
+        </div>
+        <!-- TABLO -->
+        <div style="padding:0 40px 36px">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:0">
+                <thead><tr style="background:#f1f5f9">${tableHead}</tr></thead>
+                <tbody>${tableBody}</tbody>
+            </table>
+        </div>
+        <!-- ALT BİLGİ -->
+        <div style="border-top:1px solid #e2e8f0;padding:14px 40px;display:flex;justify-content:space-between;align-items:center;background:#f8fafc">
+            <span style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#94a3b8">Harezmi IoT</span>
+            <span style="font-size:10px;color:#cbd5e1">© 2025 Harezmi IoT · Akıllı Okul Hava Yönetim Sistemi</span>
+        </div>
+    </div>`;
+}
 
-            const rows = rankedList.slice(0, 20).map((c, i) =>
-                `<tr><td>${i+1}</td><td>${c.name}</td><td>${c.pm}</td><td>${c.gas}</td><td><strong>${c.score}</strong></td><td>${c.days} gün</td></tr>`
-            ).join('');
+// ═══════════════════════════════════════════════════════════════
+// generateDailyPDF — Günlük Rapor
+// ═══════════════════════════════════════════════════════════════
+async function generateDailyPDF() {
+    if (typeof classData === 'undefined') return alert('Veri henüz yüklenmedi!');
+    const withData = classData.filter(c => c.hasData);
+    if (!withData.length) return alert("Henüz backend'den veri gelmedi!");
 
-            const div = document.createElement('div');
-            div.className = 'pdf-report-container';
-            div.innerHTML = `
-                <div class="pdf-header"><h1>📊 HAREZMİ IoT - Haftalık Rapor</h1><p>Rapor Tarihi: ${ds} | Son 7 Gün</p></div>
-                <div class="pdf-stats">
-                    <div class="pdf-stat-card"><h3>🏆 Haftalık Şampiyon</h3><h2>${champ?.name || rankedList[0].name}</h2><p>Ort. Puan: ${champ?.avgScore || rankedList[0].score}</p></div>
-                    <div class="pdf-stat-card"><h3>💨 Haftalık Ort. PM2.5</h3><h2>${avgPM}</h2><p>µg/m³</p></div>
-                    <div class="pdf-stat-card"><h3>⚠️ En Kötü Sınıf</h3><h2>${worst.name}</h2><p>Ort. Puan: ${worst.score}</p></div>
-                    <div class="pdf-stat-card"><h3>📅 Analiz Süresi</h3><h2>${dayKeys.length} Gün</h2><p>${dayKeys[0]} – ${dayKeys[dayKeys.length-1]}</p></div>
-                </div>
-                <div class="pdf-subtitle">Haftalık Sınıf Sıralaması (Ortalama Puana Göre)</div>
-                <table class="pdf-table"><thead><tr><th>#</th><th>Sınıf</th><th>Ort. PM2.5</th><th>Ort. Gaz</th><th>Ort. Puan</th><th>Veri</th></tr></thead><tbody>${rows}</tbody></table>
-                <div class="pdf-footer"><p>Harezmi IoT Akıllı Okul Hava Yönetim Sistemi | © 2025 Harezmi IoT</p></div>`;
-            document.body.appendChild(div);
-            if (typeof html2pdf !== 'undefined') {
-                const week = `${dayKeys[0]}_${dayKeys[dayKeys.length-1]}`.replace(/\./g,'-');
-                await html2pdf().set({ margin:[0.5,0.5,0.5,0.5], filename:`Harezmi_Haftalik_${week}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true}, jsPDF:{unit:'in',format:'a4',orientation:'portrait'} }).from(div).save();
-            }
-            document.body.removeChild(div);
-        }
+    const now = new Date();
+    const ds  = now.toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric' });
+    const ts  = now.toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' });
+    const dayStr = now.toLocaleDateString('tr-TR', { weekday:'long' });
+
+    const sorted = [...withData].sort((a, b) => b.score - a.score);
+    const best   = sorted[0];
+    const worst  = sorted[sorted.length - 1];
+    const avgPM  = parseFloat((withData.reduce((s, c) => s + c.pm, 0) / withData.length).toFixed(1));
+    const online = classData.filter(c => c.online).length;
+    const pmS    = _pdfPmStyle(avgPM);
+
+    // Özet kartlar
+    const cards = [
+        _pdfSummaryCard('Günün Şampiyonu',  best.name,                     `Puan: ${best.score}`,          '#22c55e'),
+        _pdfSummaryCard('Ort. PM2.5',        `${avgPM}`,                     `μg/m³ · ${pmS.label}`,         pmS.dot),
+        _pdfSummaryCard('En Kötü Puan',      worst.name,                     `Puan: ${worst.score}`,          '#ef4444'),
+        _pdfSummaryCard('Aktif Cihaz',       `${online}/${classData.length}`, 'Çevrimiçi / Toplam',            null),
+    ].join('');
+
+    // Tablo başlıkları
+    const tableHead = [
+        _pdfTh('#', 'center'),
+        _pdfTh('Sınıf'),
+        _pdfTh('Cihaz ID'),
+        _pdfTh('Durum'),
+        _pdfTh('Sıcaklık'),
+        _pdfTh('PM2.5 (μg/m³)'),
+        _pdfTh('Gaz (PPM)'),
+        _pdfTh('Puan'),
+        _pdfTh('Hava Kalitesi'),
+    ].join('');
+
+    // Tablo satırları
+    const tableBody = sorted.slice(0, 20).map((c, i) => {
+        const s        = _pdfPmStyle(c.pm);
+        const bg       = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+        const rankClr  = _pdfRankColor(i);
+        const ai       = (typeof getAIDecision === 'function') ? getAIDecision(c.pm, c.gas, c.t) : { text: '-' };
+        const aiText   = ai.text.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+        const onlineClr = c.online ? '#15803d' : '#b91c1c';
+        return `<tr style="background:${bg}">
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;text-align:center;font-family:'Courier New',monospace;font-weight:700;font-size:12px;color:${rankClr}">${String(i+1).padStart(2,'0')}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#0f172a">${c.name}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-family:'Courier New',monospace;font-size:11px;color:#64748b">${c.deviceId || '-'}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-size:11px;font-weight:600;color:${onlineClr}">${c.online ? 'Çevrimiçi' : 'Çevrimdışı'}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-family:'Courier New',monospace;color:#475569">${c.t != null ? c.t.toFixed(1)+'°C' : '-'}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-family:'Courier New',monospace;font-weight:700;color:${s.color}">${c.pm != null ? c.pm.toFixed(1) : '-'}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-family:'Courier New',monospace;color:#475569">${c.gas != null ? Math.round(c.gas) : '-'}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9">${_pdfScoreBar(c.score, c.pm)}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9">${_pdfStatusPill(c.pm)}</td>
+        </tr>`;
+    }).join('');
+
+    const html = _pdfBuildPage({
+        title:     'Günlük Hava Kalitesi Raporu',
+        subtitle:  'Rapor Tarihi',
+        dateStr:   `${ds} · ${ts}`,
+        rangeStr:  `${dayStr} · Tam gün verisi · ${withData.length} sınıf`,
+        cards,
+        tableHead,
+        tableBody,
+    });
+
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    document.body.appendChild(div);
+
+    if (typeof html2pdf !== 'undefined') {
+        await html2pdf().set({
+            margin:      [0.4, 0.4, 0.4, 0.4],
+            filename:    `Harezmi_Gunluk_${ds.replace(/\./g, '-')}.pdf`,
+            image:       { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF:       { unit: 'in', format: 'a4', orientation: 'landscape' },
+        }).from(div).save();
+    }
+    document.body.removeChild(div);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// generateWeeklyPDF — Haftalık Rapor
+// ═══════════════════════════════════════════════════════════════
+async function generateWeeklyPDF() {
+    if (typeof classData === 'undefined') return;
+    const dayKeys = getRecentDayKeys(7);
+
+    // Her gün için sınıf ortalamalarını topla
+    const classWeekly = {};
+    dayKeys.forEach(dk => {
+        getDayAverages(dk).forEach(c => {
+            if (!classWeekly[c.name]) classWeekly[c.name] = { pmSum: 0, gasSum: 0, scoreSum: 0, count: 0 };
+            classWeekly[c.name].pmSum    += c.pm;
+            classWeekly[c.name].gasSum   += c.gas;
+            classWeekly[c.name].scoreSum += c.score;
+            classWeekly[c.name].count    += 1;
+        });
+    });
+
+    // Anlık veri de varsa ekle
+    classData.filter(c => c.hasData && c.pm != null).forEach(c => {
+        if (!classWeekly[c.name]) classWeekly[c.name] = { pmSum: c.pm, gasSum: c.gas || 0, scoreSum: c.score || 0, count: 1 };
+    });
+
+    const rankedList = Object.entries(classWeekly)
+        .map(([name, v]) => ({
+            name,
+            pm:    parseFloat((v.pmSum    / v.count).toFixed(1)),
+            gas:   Math.round(v.gasSum   / v.count),
+            score: Math.round(v.scoreSum / v.count),
+            days:  v.count,
+        }))
+        .sort((a, b) => b.score - a.score);
+
+    if (!rankedList.length) return alert('Haftalık veri bulunamadı! Sistemin en az 1 gün çalışmış olması gerekiyor.');
+
+    const champ  = computeWeeklyChampion();
+    const worst  = rankedList[rankedList.length - 1];
+    const avgPM  = parseFloat((rankedList.reduce((s, c) => s + c.pm, 0) / rankedList.length).toFixed(1));
+    const pmS    = _pdfPmStyle(avgPM);
+
+    const startDate = dayKeys[0];
+    const endDate   = dayKeys[dayKeys.length - 1];
+    const now       = new Date();
+    const ds        = now.toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric' });
+
+    // Özet kartlar
+    const cards = [
+        _pdfSummaryCard('Haftalık Şampiyon',   champ?.name || rankedList[0].name,     `Ort. puan: ${champ?.avgScore || rankedList[0].score}`, '#22c55e'),
+        _pdfSummaryCard('Haftalık Ort. PM2.5',  `${avgPM}`,                             `μg/m³ · ${pmS.label}`,                                 pmS.dot),
+        _pdfSummaryCard('En Kötü Sınıf',        worst.name,                             `Ort. puan: ${worst.score}`,                             '#ef4444'),
+        _pdfSummaryCard('Analiz Süresi',         `${dayKeys.length} gün`,               `${rankedList.length} aktif sınıf`,                      null),
+    ].join('');
+
+    // Tablo başlıkları
+    const tableHead = [
+        _pdfTh('#', 'center'),
+        _pdfTh('Sınıf'),
+        _pdfTh('Ort. PM2.5 (μg/m³)'),
+        _pdfTh('Ort. Gaz (PPM)'),
+        _pdfTh('Ort. Puan'),
+        _pdfTh('Veri Günü'),
+        _pdfTh('Hava Kalitesi'),
+    ].join('');
+
+    // Tablo satırları
+    const tableBody = rankedList.slice(0, 20).map((c, i) => {
+        const s       = _pdfPmStyle(c.pm);
+        const bg      = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+        const rankClr = _pdfRankColor(i);
+        return `<tr style="background:${bg}">
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;text-align:center;font-family:'Courier New',monospace;font-weight:700;font-size:12px;color:${rankClr}">${String(i+1).padStart(2,'0')}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#0f172a">${c.name}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-family:'Courier New',monospace;font-weight:700;color:${s.color}">${c.pm}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-family:'Courier New',monospace;color:#475569">${c.gas}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9">${_pdfScoreBar(c.score, c.pm)}</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9;font-family:'Courier New',monospace;font-size:12px;color:#64748b">${c.days} gün</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #f1f5f9">${_pdfStatusPill(c.pm)}</td>
+        </tr>`;
+    }).join('');
+
+    const html = _pdfBuildPage({
+        title:     'Haftalık Hava Kalitesi Raporu',
+        subtitle:  'Analiz Dönemi',
+        dateStr:   `${startDate} – ${endDate}`,
+        rangeStr:  `Rapor tarihi: ${ds} · Son ${dayKeys.length} gün`,
+        cards,
+        tableHead,
+        tableBody,
+    });
+
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    document.body.appendChild(div);
+
+    if (typeof html2pdf !== 'undefined') {
+        const week = `${startDate}_${endDate}`.replace(/\./g, '-');
+        await html2pdf().set({
+            margin:      [0.4, 0.4, 0.4, 0.4],
+            filename:    `Harezmi_Haftalik_${week}.pdf`,
+            image:       { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF:       { unit: 'in', format: 'a4', orientation: 'landscape' },
+        }).from(div).save();
+    }
+    document.body.removeChild(div);
+}
 
         function toggleMobileMenu() { 
             const sb = document.getElementById('sidebar');
